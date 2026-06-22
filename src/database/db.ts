@@ -117,9 +117,11 @@ const initializeDatabase = async (database: SQLite.SQLiteDatabase) => {
     // Apply migrations for databases created by older app versions.
     await runMigrations(database);
 
-    // Sample data is only inserted in development builds. Shipping seed data
-    // in a production/release binary would pollute real inspectors' devices.
-    if (__DEV__) {
+    // Sample data is inserted in development builds, or in any build that opts
+    // in via EXPO_PUBLIC_SEED_DATA=true (used by the `preview` profile so the
+    // offline test APK ships with projects/templates to inspect). Real
+    // production builds leave this unset so seed data never reaches inspectors.
+    if (__DEV__ || process.env.EXPO_PUBLIC_SEED_DATA === 'true') {
       await seedDatabase(database);
     }
   } catch (error) {
