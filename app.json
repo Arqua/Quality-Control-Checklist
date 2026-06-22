@@ -7,13 +7,6 @@
     "icon": "./assets/icon.png",
     "scheme": "qcchecklist",
     "userInterfaceStyle": "light",
-    "privacy": "public",
-    "privacyPolicyUrl": "https://arqua.github.io/quality-control-checklist/privacy-policy",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#004E89"
-    },
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -45,6 +38,14 @@
         {
           "origin": false,
           "asyncRoutes": true
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#004E89"
         }
       ],
       [
