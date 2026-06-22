@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # QC Checklist APK Build Script
-# Builds a debug APK for field testing without requiring Expo EAS account
+# Builds an Android APK via the EAS Build workflow.
+# (The legacy `expo build:android` command was removed in newer Expo SDKs.)
 
 set -e
 
@@ -19,6 +20,14 @@ echo "✓ Node.js version: $(node --version)"
 echo "✓ npm version: $(npm --version)"
 echo ""
 
+# Ensure EAS CLI is available
+if ! command -v eas &> /dev/null; then
+    echo "⚠️  EAS CLI not found. Installing globally..."
+    npm install -g eas-cli
+fi
+echo "✓ EAS CLI version: $(eas --version 2>/dev/null || echo 'installed')"
+echo ""
+
 # Install dependencies if needed
 if [ ! -d "node_modules" ]; then
     echo "📦 Installing dependencies..."
@@ -32,92 +41,42 @@ echo ""
 echo "📱 APK Build Options:"
 echo "===================="
 echo ""
-echo "1. DEBUG APK (Fast - ~2-3 min, good for testing)"
-echo "2. RELEASE APK (Production - ~5-10 min, requires signing)"
-echo "3. BUILD LOCALLY (Using Android SDK)"
+echo "1. PREVIEW APK   (cloud build, internal distribution - good for field testing)"
+echo "2. PRODUCTION APK (cloud build, release-ready, signed by EAS)"
+echo "3. LOCAL APK     (build on this machine, requires Android SDK + JDK 17)"
 echo ""
 read -p "Select option (1-3): " build_option
 
 case $build_option in
     1)
         echo ""
-        echo "🔨 Building DEBUG APK..."
-        echo "This creates an unsigned APK suitable for testing on development devices."
+        echo "🔨 Building PREVIEW APK via EAS (cloud)..."
+        echo "An Expo account is required (free). Run 'eas login' if prompted."
         echo ""
-
-        # Check if expo is available
-        if ! npx expo --version &> /dev/null; then
-            echo "⚠️  Installing Expo CLI globally..."
-            npm install -g expo-cli
-        fi
-
-        echo "🔄 Starting build process..."
+        eas build --platform android --profile preview
         echo ""
-        echo "Note: You'll be prompted to log into Expo (optional, can skip)"
-        echo "For field testing, you can skip login and use local build."
-        echo ""
-
-        # Build debug APK
-        npx expo build:android --type apk --clear
-
-        echo ""
-        echo "✅ DEBUG APK Build Complete!"
-        echo ""
-        echo "Next steps:"
-        echo "1. Download the APK from the build link above"
-        echo "2. Install on Android device:"
-        echo "   adb install path/to/app.apk"
-        echo "3. Or transfer via USB and install manually"
-        echo ""
+        echo "✅ Build submitted! A download link appears above when it finishes."
+        echo "   Install with: adb install <downloaded.apk>"
         ;;
 
     2)
         echo ""
-        echo "🔐 Building RELEASE APK..."
-        echo "This creates a signed, release-ready APK."
+        echo "🔐 Building PRODUCTION APK via EAS (cloud)..."
+        echo "EAS manages the release signing keystore for you."
         echo ""
-
-        if [ ! -f "android/app/my-release-key.keystore" ]; then
-            echo "⚠️  Keystore file not found. Creating new one..."
-            echo ""
-            read -p "Keystore password: " keystore_pass
-            read -p "Key password: " key_pass
-
-            # Create keystore
-            keytool -genkey -v -keystore android/app/my-release-key.keystore \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -alias my-key-alias
-
-            echo "✓ Keystore created"
-        fi
-
-        echo "🔄 Starting release build..."
-        npx expo build:android --type release --clear
-
+        eas build --platform android --profile production
         echo ""
-        echo "✅ RELEASE APK Build Complete!"
-        echo "Download and test on devices"
-        echo ""
+        echo "✅ Build submitted! Download the signed APK from the link above."
         ;;
 
     3)
         echo ""
-        echo "🔨 Local Build Instructions"
-        echo "==========================="
+        echo "🔨 Building LOCAL APK via EAS..."
+        echo "Requires: Android SDK (ANDROID_HOME), JDK 17."
         echo ""
-        echo "Requirements:"
-        echo "- Android SDK installed (API level 31+)"
-        echo "- Java Development Kit (JDK) 11+"
-        echo "- Gradle"
+        eas build --platform android --profile preview --local
         echo ""
-        echo "Steps:"
-        echo "1. Install Expo CLI: npm install -g expo-cli"
-        echo "2. Install EAS CLI: npm install -g eas-cli"
-        echo "3. Run: eas build --platform android --local"
-        echo ""
-        echo "Or use Docker:"
-        echo "docker run --rm -v \$PWD:/workspace node:18-alpine sh -c 'cd /workspace && npm install && npx expo build:android --type apk'"
-        echo ""
+        echo "✅ Local build complete. The APK path is printed above."
         ;;
 
     *)
@@ -127,4 +86,4 @@ case $build_option in
 esac
 
 echo ""
-echo "📚 For more info, see GETTING_STARTED.md"
+echo "📚 For more info, see LOCAL-BUILD-GUIDE.md"

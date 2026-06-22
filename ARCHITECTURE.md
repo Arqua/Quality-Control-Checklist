@@ -302,7 +302,7 @@ npm start
 ```bash
 # Development build for physical testing
 expo build:ios --type simulator
-expo build:android --type apk
+eas build --platform android --profile preview
 
 # Production build
 eas build --platform ios --type production

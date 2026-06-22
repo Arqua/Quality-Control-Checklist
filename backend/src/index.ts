@@ -1,77 +1,116 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { Pool } from 'pg';
-import { v4 as uuidv4 } from 'uuid';
+import multer from 'multer';
+import { Pool, PoolClient } from 'pg';
+import { authenticateToken, canAccessProject } from './auth';
+import {
+  validateSyncPayload,
+  collectInstanceIds,
+} from './validation';
+import { storePhoto } from './storage';
 
 dotenv.config();
 
 const app: Express = express();
 const port = process.env.PORT || 3000;
 
-// Database connection pool
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
 });
 
-// Middleware
-app.use(cors({
-  origin: (process.env.CORS_ORIGIN || 'http://localhost:3000').split(','),
-  credentials: true,
-}));
+// In-memory photo handling with a sane size cap (8 MB).
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+});
+
+app.use(
+  cors({
+    origin: (process.env.CORS_ORIGIN || 'http://localhost:3000').split(','),
+    credentials: true,
+  })
+);
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// Request logging
-app.use((req: Request, res: Response, next: NextFunction) => {
+app.use((req: Request, _res: Response, next: NextFunction) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
   next();
 });
 
-// Health check endpoint
-app.get('/health', (req: Request, res: Response) => {
-  res.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-  });
+// Public health check (no auth).
+app.get('/health', (_req: Request, res: Response) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString(), uptime: process.uptime() });
 });
 
-// TODO: Implement authentication middleware
-// app.use('/api/*', authenticateToken);
+// Every /api route requires a valid bearer token.
+app.use('/api', authenticateToken);
+
+/**
+ * Builds a map of instanceId -> projectId using the payload's own instances
+ * first, then filling gaps from the database. Used for permission enforcement.
+ */
+async function resolveInstanceProjects(
+  client: PoolClient,
+  body: any,
+  instanceIds: string[]
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  for (const inst of body?.instances ?? []) {
+    if (inst?.id && inst?.project_id) map.set(inst.id, inst.project_id);
+  }
+
+  const missing = instanceIds.filter((id) => !map.has(id));
+  if (missing.length > 0) {
+    const { rows } = await client.query(
+      'SELECT id, project_id FROM checklist_instances WHERE id = ANY($1::uuid[])',
+      [missing]
+    );
+    for (const row of rows) map.set(row.id, row.project_id);
+  }
+  return map;
+}
 
 /**
  * POST /api/sync
- * Main sync endpoint for offline-first data synchronization
- *
- * Receives:
- * - checklist_results: Array of inspection item results
- * - punch_items: Array of auto-generated defect items
- * - instances: Array of completed checklists
- *
- * Returns:
- * - synced IDs from successful upserts
+ * Validates and persists offline-first data, enforcing project-level access.
  */
 app.post('/api/sync', async (req: Request, res: Response) => {
+  // 1) Shape & content validation (untrusted input).
+  const validation = validateSyncPayload(req.body);
+  if (!validation.valid) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid sync payload',
+      details: validation.errors,
+    });
+  }
+
+  const { results = [], punchItems = [], instances = [] } = req.body;
   const client = await pool.connect();
 
   try {
-    const { results = [], punchItems = [], instances = [], timestamp } = req.body;
+    // 2) Permission check: the user must be allowed on every referenced project.
+    const instanceIds = collectInstanceIds(req.body);
+    const instanceProjects = await resolveInstanceProjects(
+      client,
+      req.body,
+      instanceIds
+    );
 
-    console.log(`[SYNC] Processing payload: ${results.length} results, ${punchItems.length} punch items, ${instances.length} instances`);
-
-    // Validate payload
-    if (!Array.isArray(results) || !Array.isArray(punchItems) || !Array.isArray(instances)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid payload structure',
-      });
+    for (const instanceId of instanceIds) {
+      const projectId = instanceProjects.get(instanceId);
+      if (!projectId || !canAccessProject(req.user, projectId)) {
+        return res.status(403).json({
+          success: false,
+          error: `Not authorized to write to instance ${instanceId}`,
+        });
+      }
     }
-
-    // TODO: Validate data integrity and user permissions
 
     const syncedIds = {
       resultIds: [] as string[],
@@ -79,40 +118,30 @@ app.post('/api/sync', async (req: Request, res: Response) => {
       instanceIds: [] as string[],
     };
 
-    // Begin transaction
     await client.query('BEGIN');
-
     try {
-      // Process checklist results
+      for (const instance of instances) {
+        await upsertChecklistInstance(client, instance);
+        syncedIds.instanceIds.push(instance.id);
+      }
       for (const result of results) {
         await upsertChecklistResult(client, result);
         syncedIds.resultIds.push(result.id);
       }
-
-      // Process punch items
       for (const punchItem of punchItems) {
         await upsertPunchItem(client, punchItem);
         syncedIds.punchItemIds.push(punchItem.id);
       }
 
-      // Process instances
-      for (const instance of instances) {
-        await upsertChecklistInstance(client, instance);
-        syncedIds.instanceIds.push(instance.id);
-      }
-
-      // Log sync operation
       await logSync(client, {
-        action: 'sync_completed',
+        userId: req.user?.id ?? null,
         resultCount: results.length,
         punchItemCount: punchItems.length,
-        instanceCount: instances.length,
         payload: JSON.stringify({ results, punchItems, instances }),
       });
 
       await client.query('COMMIT');
-
-      res.json({
+      return res.json({
         success: true,
         synced: syncedIds,
         serverTime: new Date().toISOString(),
@@ -123,7 +152,7 @@ app.post('/api/sync', async (req: Request, res: Response) => {
     }
   } catch (error) {
     console.error('[SYNC ERROR]', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: 'Sync failed: ' + (error instanceof Error ? error.message : 'Unknown error'),
     });
@@ -133,90 +162,165 @@ app.post('/api/sync', async (req: Request, res: Response) => {
 });
 
 /**
- * Upsert checklist result with conflict resolution
- * Uses updated_at timestamp to determine which version to keep
+ * POST /api/photos
+ * Uploads a single inspection photo to object storage and records its URL.
  */
-async function upsertChecklistResult(client: any, result: any) {
+app.post('/api/photos', upload.single('photo'), async (req: Request, res: Response) => {
+  const file = req.file;
+  const resultId = req.body?.resultId as string | undefined;
+
+  if (!file) {
+    return res.status(400).json({ success: false, error: 'No photo uploaded' });
+  }
+  if (!resultId) {
+    return res.status(400).json({ success: false, error: 'resultId is required' });
+  }
+
+  const client = await pool.connect();
+  try {
+    // Authorize against the photo's owning project, if the result exists.
+    const { rows } = await client.query(
+      `SELECT ci.project_id AS project_id
+         FROM checklist_results cr
+         JOIN checklist_instances ci ON ci.id = cr.instance_id
+        WHERE cr.id = $1`,
+      [resultId]
+    );
+    if (rows.length > 0 && !canAccessProject(req.user, rows[0].project_id)) {
+      return res.status(403).json({ success: false, error: 'Not authorized for this result' });
+    }
+
+    const key = `photos/${resultId}.jpg`;
+    const stored = await storePhoto(key, file.buffer, file.mimetype || 'image/jpeg');
+
+    await client.query(
+      'UPDATE checklist_results SET photo_uri = $1, synced_at = NOW() WHERE id = $2',
+      [stored.url, resultId]
+    );
+
+    return res.json({ success: true, photoUrl: stored.url });
+  } catch (error) {
+    console.error('[PHOTO ERROR]', error);
+    return res.status(500).json({ success: false, error: 'Photo upload failed' });
+  } finally {
+    client.release();
+  }
+});
+
+/**
+ * GET /api/projects — projects visible to the authenticated user.
+ */
+app.get('/api/projects', async (req: Request, res: Response) => {
+  try {
+    const restricted =
+      req.user?.role !== 'admin' &&
+      Array.isArray(req.user?.projectIds) &&
+      (req.user?.projectIds?.length ?? 0) > 0;
+
+    const result = restricted
+      ? await pool.query(
+          'SELECT * FROM projects WHERE id = ANY($1::uuid[]) ORDER BY created_at DESC',
+          [req.user?.projectIds]
+        )
+      : await pool.query('SELECT * FROM projects ORDER BY created_at DESC');
+
+    res.json({ success: true, projects: result.rows });
+  } catch (error) {
+    console.error('[PROJECTS ERROR]', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch projects' });
+  }
+});
+
+/**
+ * GET /api/templates — all templates with their items (templates are global).
+ */
+app.get('/api/templates', async (_req: Request, res: Response) => {
+  try {
+    const templates = await pool.query(
+      'SELECT * FROM templates ORDER BY division, name'
+    );
+    const items = await pool.query(
+      'SELECT * FROM template_items ORDER BY template_id, sort_order'
+    );
+
+    const itemsByTemplate = new Map<string, any[]>();
+    for (const item of items.rows) {
+      const list = itemsByTemplate.get(item.template_id) ?? [];
+      list.push(item);
+      itemsByTemplate.set(item.template_id, list);
+    }
+
+    const payload = templates.rows.map((t) => ({
+      ...t,
+      items: itemsByTemplate.get(t.id) ?? [],
+    }));
+
+    res.json({ success: true, templates: payload });
+  } catch (error) {
+    console.error('[TEMPLATES ERROR]', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch templates' });
+  }
+});
+
+async function upsertChecklistResult(client: PoolClient, result: any) {
   const {
     id,
     instance_id,
     template_item_id,
     status,
     comments,
+    photo_remote_url,
     photo_local_uri,
     created_at,
     updated_at,
   } = result;
 
-  // Check if result exists
+  // Prefer the uploaded remote URL; fall back to whatever URI the client sent.
+  const photoUri = photo_remote_url ?? photo_local_uri ?? null;
+
   const existing = await client.query(
     'SELECT updated_at FROM checklist_results WHERE id = $1',
     [id]
   );
 
   if (existing.rows.length === 0) {
-    // Insert new
     await client.query(
       `INSERT INTO checklist_results
        (id, instance_id, template_item_id, status, comments, photo_uri, created_at, updated_at, synced_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
-      [id, instance_id, template_item_id, status, comments, photo_local_uri, created_at, updated_at]
+      [id, instance_id, template_item_id, status, comments ?? null, photoUri, created_at, updated_at]
     );
-  } else {
-    // Update if client version is newer (conflict resolution)
-    const existingTime = new Date(existing.rows[0].updated_at);
-    const incomingTime = new Date(updated_at);
-
-    if (incomingTime > existingTime) {
-      await client.query(
-        `UPDATE checklist_results
-         SET status = $1, comments = $2, photo_uri = $3, updated_at = $4, synced_at = NOW()
-         WHERE id = $5`,
-        [status, comments, photo_local_uri, updated_at, id]
-      );
-    }
-    // else: server version is newer, ignore update
+  } else if (new Date(updated_at) > new Date(existing.rows[0].updated_at)) {
+    await client.query(
+      `UPDATE checklist_results
+       SET status = $1, comments = $2, photo_uri = COALESCE($3, photo_uri), updated_at = $4, synced_at = NOW()
+       WHERE id = $5`,
+      [status, comments ?? null, photoUri, updated_at, id]
+    );
   }
 }
 
-/**
- * Upsert punch item
- */
-async function upsertPunchItem(client: any, punchItem: any) {
-  const {
-    id,
-    checklist_instance_id,
-    template_item_id,
-    description,
-    status,
-    created_at,
-  } = punchItem;
+async function upsertPunchItem(client: PoolClient, punchItem: any) {
+  const { id, checklist_instance_id, template_item_id, description, status, created_at } =
+    punchItem;
 
-  const existing = await client.query(
-    'SELECT id FROM punch_items WHERE id = $1',
-    [id]
-  );
-
+  const existing = await client.query('SELECT id FROM punch_items WHERE id = $1', [id]);
   if (existing.rows.length === 0) {
     await client.query(
       `INSERT INTO punch_items
        (id, checklist_instance_id, template_item_id, description, status, created_at, synced_at)
        VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-      [id, checklist_instance_id, template_item_id, description, status, created_at]
+      [id, checklist_instance_id, template_item_id, description, status ?? 'OPEN', created_at]
     );
   } else {
-    // Update status if changed
     await client.query(
       'UPDATE punch_items SET status = $1, synced_at = NOW() WHERE id = $2',
-      [status, id]
+      [status ?? 'OPEN', id]
     );
   }
 }
 
-/**
- * Upsert checklist instance
- */
-async function upsertChecklistInstance(client: any, instance: any) {
+async function upsertChecklistInstance(client: PoolClient, instance: any) {
   const {
     id,
     project_id,
@@ -233,81 +337,59 @@ async function upsertChecklistInstance(client: any, instance: any) {
     'SELECT id FROM checklist_instances WHERE id = $1',
     [id]
   );
-
   if (existing.rows.length === 0) {
     await client.query(
       `INSERT INTO checklist_instances
        (id, project_id, template_id, inspector_name, status, created_at, signed_off_at, inspector_signature, pm_signature, synced_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
-      [id, project_id, template_id, inspector_name, status, created_at, signed_off_at, inspector_signature, pm_signature]
+      [id, project_id, template_id, inspector_name, status, created_at, signed_off_at ?? null, inspector_signature ?? null, pm_signature ?? null]
     );
   } else {
-    // Update only if status changed (e.g., from DRAFT to COMPLETED)
     await client.query(
       `UPDATE checklist_instances
        SET status = $1, signed_off_at = $2, inspector_signature = $3, pm_signature = $4, synced_at = NOW()
        WHERE id = $5`,
-      [status, signed_off_at, inspector_signature, pm_signature, id]
+      [status, signed_off_at ?? null, inspector_signature ?? null, pm_signature ?? null, id]
     );
   }
 }
 
-/**
- * Log sync operation for audit trail
- */
-async function logSync(client: any, logData: any) {
-  const { action, resultCount, punchItemCount, instanceCount, payload } = logData;
-
+async function logSync(
+  client: PoolClient,
+  logData: { userId: string | null; resultCount: number; punchItemCount: number; payload: string }
+) {
   await client.query(
-    `INSERT INTO sync_log (action, payload, result_count, punch_item_count, synced_at)
-     VALUES ($1, $2, $3, $4, NOW())`,
-    [action, payload, resultCount, punchItemCount]
+    `INSERT INTO sync_log (user_id, action, payload, result_count, punch_item_count, synced_at)
+     VALUES ($1, $2, $3, $4, $5, NOW())`,
+    [logData.userId, 'sync_completed', logData.payload, logData.resultCount, logData.punchItemCount]
   );
 }
 
-// TODO: Implement additional endpoints
-// GET /api/projects - List all projects
-// GET /api/templates - List all templates
-// GET /api/checklists/:projectId - List checklists for project
-// GET /api/punch-items/:instanceId - List punch items
-// PATCH /api/punch-items/:id - Update punch item status
-// POST /api/photos - Upload and store photos
-// GET /api/reports/:instanceId - Generate PDF report
-
 // Error handling middleware
-app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   console.error('Unhandled error:', err);
-  res.status(500).json({
-    success: false,
-    error: 'Internal server error',
-  });
+  res.status(500).json({ success: false, error: 'Internal server error' });
 });
 
 // 404 handler
-app.use((req: Request, res: Response) => {
-  res.status(404).json({
-    success: false,
-    error: 'Endpoint not found',
+app.use((_req: Request, res: Response) => {
+  res.status(404).json({ success: false, error: 'Endpoint not found' });
+});
+
+// Only listen when run directly (not when imported by tests).
+if (require.main === module) {
+  app.listen(port, () => {
+    console.log(`🚀 QC Checklist API running on http://localhost:${port}`);
+    console.log(`📝 Sync endpoint: POST http://localhost:${port}/api/sync`);
   });
-});
 
-// Start server
-app.listen(port, () => {
-  console.log(`🚀 QC Checklist API running on http://localhost:${port}`);
-  console.log(`📝 Sync endpoint: POST http://localhost:${port}/api/sync`);
-});
-
-// Graceful shutdown
-process.on('SIGINT', () => {
-  console.log('\nShutting down gracefully...');
-  pool.end();
-  process.exit(0);
-});
-
-process.on('SIGTERM', () => {
-  console.log('\nShutting down gracefully...');
-  pool.end();
-  process.exit(0);
-});
+  const shutdown = () => {
+    console.log('\nShutting down gracefully...');
+    pool.end();
+    process.exit(0);
+  };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+}
 
 export default app;

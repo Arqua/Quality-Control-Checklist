@@ -4,10 +4,8 @@ import {
   ChecklistInstance,
   ChecklistResult,
   TemplateItem,
-  ItemStatus,
-  SyncPayload,
 } from '../types/database';
-import axios from 'axios';
+import { runSync } from '../services/sync';
 
 interface ChecklistState {
   instance: ChecklistInstance | null;
@@ -27,9 +25,20 @@ const INITIAL_STATE: ChecklistState = {
   error: null,
 };
 
+const SYNC_INTERVAL_MS = 30000;
+
+/** Patch passed to {@link useChecklist.updateItem}. */
+export interface ItemPatch {
+  status?: ChecklistResult['status'];
+  comments?: string | null;
+  photoUri?: string | null;
+}
+
 export const useChecklist = (instanceId: string | null) => {
   const [state, setState] = useState<ChecklistState>(INITIAL_STATE);
-  const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const syncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Guards against overlapping sync passes without forcing re-renders.
+  const syncingRef = useRef(false);
 
   useEffect(() => {
     if (!instanceId) {
@@ -37,13 +46,21 @@ export const useChecklist = (instanceId: string | null) => {
       return;
     }
 
+    let cancelled = false;
+
     const loadChecklist = async () => {
       try {
-        setState(prev => ({ ...prev, loading: true, error: null }));
+        setState((prev) => ({ ...prev, loading: true, error: null }));
 
         const instance = await db.getChecklistInstanceById(instanceId);
         if (!instance) {
-          setState(prev => ({ ...prev, error: 'Checklist not found', loading: false }));
+          if (!cancelled) {
+            setState((prev) => ({
+              ...prev,
+              error: 'Checklist not found',
+              loading: false,
+            }));
+          }
           return;
         }
 
@@ -51,71 +68,110 @@ export const useChecklist = (instanceId: string | null) => {
         const results = await db.getChecklistResultsByInstance(instanceId);
 
         const resultsMap = new Map<string, ChecklistResult>();
-        results.forEach(result => {
+        results.forEach((result) => {
           resultsMap.set(result.template_item_id, result);
         });
 
-        setState({
-          instance,
-          items,
-          results: resultsMap,
-          loading: false,
-          syncing: false,
-          error: null,
-        });
+        if (!cancelled) {
+          setState({
+            instance,
+            items,
+            results: resultsMap,
+            loading: false,
+            syncing: false,
+            error: null,
+          });
+        }
       } catch (error) {
-        setState(prev => ({
-          ...prev,
-          error: error instanceof Error ? error.message : 'Failed to load checklist',
-          loading: false,
-        }));
+        if (!cancelled) {
+          setState((prev) => ({
+            ...prev,
+            error:
+              error instanceof Error ? error.message : 'Failed to load checklist',
+            loading: false,
+          }));
+        }
       }
     };
 
     loadChecklist();
+    return () => {
+      cancelled = true;
+    };
   }, [instanceId]);
 
-  const updateItemStatus = useCallback(
-    async (templateItemId: string, status: ItemStatus, comments?: string, photoUri?: string) => {
-      if (!state.instance) return;
+  const attemptSync = useCallback(async () => {
+    if (syncingRef.current) return;
+    syncingRef.current = true;
+    setState((prev) => ({ ...prev, syncing: true }));
+
+    try {
+      await runSync();
+    } finally {
+      syncingRef.current = false;
+      setState((prev) => ({ ...prev, syncing: false }));
+    }
+  }, []);
+
+  /**
+   * Creates or patches the result for a checklist item. Omitted patch fields
+   * are preserved; a new row requires at least a `status`.
+   */
+  const updateItem = useCallback(
+    async (templateItemId: string, patch: ItemPatch) => {
+      const instance = state.instance;
+      if (!instance) return;
 
       try {
         const existing = state.results.get(templateItemId);
+        let resultId: string;
 
         if (existing) {
-          await db.updateChecklistResult(existing.id, status, comments, photoUri);
+          await db.updateChecklistResult(existing.id, {
+            status: patch.status,
+            comments: patch.comments,
+            photoUri: patch.photoUri,
+          });
+          resultId = existing.id;
         } else {
-          await db.createChecklistResult(
-            state.instance.id,
+          if (!patch.status) {
+            // Can't create a result row without a status (NOT NULL); ignore.
+            return;
+          }
+          const created = await db.createChecklistResult(
+            instance.id,
             templateItemId,
-            status,
-            comments,
-            photoUri
+            patch.status,
+            patch.comments ?? undefined,
+            patch.photoUri ?? undefined
           );
+          resultId = created.id;
         }
 
-        // Update local state
-        const result = await db.getChecklistResultById(
-          existing?.id || (await db.getChecklistResultsByInstance(state.instance.id))[0]?.id || ''
-        );
-
-        if (result) {
-          setState(prev => ({
+        const fresh = await db.getChecklistResultById(resultId);
+        if (fresh) {
+          setState((prev) => ({
             ...prev,
-            results: new Map(prev.results).set(templateItemId, result),
+            results: new Map(prev.results).set(templateItemId, fresh),
           }));
         }
 
-        // Trigger sync if online
         attemptSync();
       } catch (error) {
-        setState(prev => ({
+        setState((prev) => ({
           ...prev,
           error: error instanceof Error ? error.message : 'Failed to update item',
         }));
       }
     },
-    [state.instance]
+    [state.instance, state.results, attemptSync]
+  );
+
+  /** Convenience wrapper used by the Pass/Fail/N/A buttons. */
+  const updateItemStatus = useCallback(
+    (templateItemId: string, status: ChecklistResult['status']) =>
+      updateItem(templateItemId, { status }),
+    [updateItem]
   );
 
   const completeChecklist = useCallback(
@@ -123,61 +179,36 @@ export const useChecklist = (instanceId: string | null) => {
       if (!state.instance) return;
 
       try {
-        await db.signOffChecklistInstance(state.instance.id, inspectorSignature, pmSignature);
+        await db.signOffChecklistInstance(
+          state.instance.id,
+          inspectorSignature,
+          pmSignature
+        );
 
         const updated = await db.getChecklistInstanceById(state.instance.id);
         if (updated) {
-          setState(prev => ({ ...prev, instance: updated }));
+          setState((prev) => ({ ...prev, instance: updated }));
         }
 
-        // Trigger sync
         attemptSync();
       } catch (error) {
-        setState(prev => ({
+        setState((prev) => ({
           ...prev,
-          error: error instanceof Error ? error.message : 'Failed to complete checklist',
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Failed to complete checklist',
         }));
       }
     },
-    [state.instance]
+    [state.instance, attemptSync]
   );
 
-  const attemptSync = useCallback(async () => {
-    if (state.syncing) return;
-
-    setState(prev => ({ ...prev, syncing: true }));
-
-    try {
-      const payload = await db.getPendingSyncPayload();
-
-      if (payload.results.length === 0 && payload.punchItems.length === 0) {
-        setState(prev => ({ ...prev, syncing: false }));
-        return;
-      }
-
-      // Stub function - replace with actual API endpoint
-      const syncedIds = await syncToBackend(payload);
-
-      if (syncedIds.resultIds.length > 0 || syncedIds.punchItemIds.length > 0) {
-        await db.markAsSynced(
-          syncedIds.resultIds,
-          syncedIds.punchItemIds,
-          syncedIds.instanceIds
-        );
-      }
-
-      setState(prev => ({ ...prev, syncing: false }));
-    } catch (error) {
-      console.error('Sync error:', error);
-      setState(prev => ({ ...prev, syncing: false }));
-    }
-  }, [state.syncing]);
-
-  // Setup periodic sync
+  // Periodic background sync.
   useEffect(() => {
     syncIntervalRef.current = setInterval(() => {
       attemptSync();
-    }, 30000); // Try sync every 30 seconds
+    }, SYNC_INTERVAL_MS);
 
     return () => {
       if (syncIntervalRef.current) {
@@ -190,39 +221,16 @@ export const useChecklist = (instanceId: string | null) => {
     await attemptSync();
   }, [attemptSync]);
 
+  const clearError = useCallback(() => {
+    setState((prev) => ({ ...prev, error: null }));
+  }, []);
+
   return {
     ...state,
+    updateItem,
     updateItemStatus,
     completeChecklist,
     manualSync,
+    clearError,
   };
 };
-
-async function syncToBackend(payload: SyncPayload): Promise<{
-  resultIds: string[];
-  punchItemIds: string[];
-  instanceIds: string[];
-}> {
-  try {
-    // TODO: Replace with actual backend URL
-    const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://localhost:3000';
-
-    const response = await axios.post(`${BACKEND_URL}/api/sync`, payload, {
-      timeout: 10000,
-    });
-
-    if (response.status === 200) {
-      return {
-        resultIds: payload.results.map(r => r.id),
-        punchItemIds: payload.punchItems.map(p => p.id),
-        instanceIds: payload.instances.map(i => i.id),
-      };
-    }
-
-    return { resultIds: [], punchItemIds: [], instanceIds: [] };
-  } catch (error) {
-    // Network error - will retry next time
-    console.error('Backend sync failed:', error);
-    return { resultIds: [], punchItemIds: [], instanceIds: [] };
-  }
-}

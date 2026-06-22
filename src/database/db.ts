@@ -9,7 +9,7 @@ import {
   PunchItem,
   ItemStatus,
   ChecklistStatus,
-  SyncStatus,
+  PhotoSyncStatus,
   SyncPayload,
 } from '../types/database';
 
@@ -74,6 +74,7 @@ const initializeDatabase = async (database: SQLite.SQLiteDatabase) => {
         signed_off_at TEXT,
         inspector_signature TEXT,
         pm_signature TEXT,
+        sync_status TEXT,
         FOREIGN KEY (project_id) REFERENCES projects(id),
         FOREIGN KEY (template_id) REFERENCES templates(id)
       );
@@ -88,6 +89,8 @@ const initializeDatabase = async (database: SQLite.SQLiteDatabase) => {
         status TEXT NOT NULL,
         comments TEXT,
         photo_local_uri TEXT,
+        photo_remote_url TEXT,
+        photo_sync_status TEXT NOT NULL DEFAULT 'NONE',
         sync_status TEXT NOT NULL DEFAULT 'PENDING',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
@@ -111,11 +114,49 @@ const initializeDatabase = async (database: SQLite.SQLiteDatabase) => {
       );
     `);
 
-    await seedDatabase(database);
+    // Apply migrations for databases created by older app versions.
+    await runMigrations(database);
+
+    // Sample data is only inserted in development builds. Shipping seed data
+    // in a production/release binary would pollute real inspectors' devices.
+    if (__DEV__) {
+      await seedDatabase(database);
+    }
   } catch (error) {
     console.error('Database initialization error:', error);
     throw error;
   }
+};
+
+/**
+ * Idempotently adds columns introduced after the initial release so existing
+ * installs upgrade cleanly. SQLite has no "ADD COLUMN IF NOT EXISTS", so we
+ * inspect the table schema first and only ALTER when the column is missing.
+ */
+const runMigrations = async (database: SQLite.SQLiteDatabase) => {
+  const ensureColumn = async (
+    table: string,
+    column: string,
+    definition: string
+  ) => {
+    const cols = await database.getAllAsync<{ name: string }>(
+      `PRAGMA table_info(${table})`
+    );
+    const exists = (cols || []).some((c) => c.name === column);
+    if (!exists) {
+      await database.execAsync(
+        `ALTER TABLE ${table} ADD COLUMN ${column} ${definition};`
+      );
+    }
+  };
+
+  await ensureColumn('checklist_results', 'photo_remote_url', 'TEXT');
+  await ensureColumn(
+    'checklist_results',
+    'photo_sync_status',
+    "TEXT NOT NULL DEFAULT 'NONE'"
+  );
+  await ensureColumn('checklist_instances', 'sync_status', 'TEXT');
 };
 
 const seedDatabase = async (database: SQLite.SQLiteDatabase) => {
@@ -314,12 +355,13 @@ export const createChecklistResult = async (
   const database = await getDatabase();
   const id = uuidv4();
   const now = new Date().toISOString();
+  const photoSyncStatus: PhotoSyncStatus = photoUri ? 'PENDING' : 'NONE';
 
   await database.runAsync(
     `INSERT INTO checklist_results
-     (id, instance_id, template_item_id, status, comments, photo_local_uri, sync_status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, instanceId, templateItemId, status, comments || null, photoUri || null, 'PENDING', now, now]
+     (id, instance_id, template_item_id, status, comments, photo_local_uri, photo_remote_url, photo_sync_status, sync_status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, instanceId, templateItemId, status, comments || null, photoUri || null, null, photoSyncStatus, 'PENDING', now, now]
   );
 
   // If FAIL, create punch item
@@ -340,17 +382,27 @@ export const createChecklistResult = async (
     status,
     comments: comments || null,
     photo_local_uri: photoUri || null,
+    photo_remote_url: null,
+    photo_sync_status: photoSyncStatus,
     sync_status: 'PENDING',
     created_at: now,
     updated_at: now,
   };
 };
 
+/**
+ * Patch shape for partial updates. A field left `undefined` is preserved; an
+ * explicit `null` for `photoUri` clears the attached photo.
+ */
+export interface ChecklistResultPatch {
+  status?: ItemStatus;
+  comments?: string | null;
+  photoUri?: string | null;
+}
+
 export const updateChecklistResult = async (
   id: string,
-  status: ItemStatus,
-  comments?: string,
-  photoUri?: string
+  patch: ChecklistResultPatch
 ): Promise<void> => {
   const database = await getDatabase();
   const now = new Date().toISOString();
@@ -364,11 +416,28 @@ export const updateChecklistResult = async (
     throw new Error('Checklist result not found');
   }
 
+  // Merge: only overwrite fields explicitly provided in the patch.
+  const status = patch.status ?? existing.status;
+  const comments =
+    patch.comments !== undefined ? patch.comments : existing.comments ?? null;
+
+  let photoLocalUri = existing.photo_local_uri ?? null;
+  let photoRemoteUrl = existing.photo_remote_url ?? null;
+  let photoSyncStatus: PhotoSyncStatus = existing.photo_sync_status ?? 'NONE';
+
+  if (patch.photoUri !== undefined) {
+    photoLocalUri = patch.photoUri;
+    // A new (or cleared) local photo invalidates any prior upload.
+    photoRemoteUrl = null;
+    photoSyncStatus = patch.photoUri ? 'PENDING' : 'NONE';
+  }
+
   await database.runAsync(
     `UPDATE checklist_results
-     SET status = ?, comments = ?, photo_local_uri = ?, updated_at = ?, sync_status = ?
+     SET status = ?, comments = ?, photo_local_uri = ?, photo_remote_url = ?,
+         photo_sync_status = ?, updated_at = ?, sync_status = ?
      WHERE id = ?`,
-    [status, comments || null, photoUri || null, now, 'PENDING', id]
+    [status, comments, photoLocalUri, photoRemoteUrl, photoSyncStatus, now, 'PENDING', id]
   );
 
   // If changing to FAIL and wasn't before, create punch item
@@ -453,7 +522,7 @@ export const getPendingSyncPayload = async (): Promise<SyncPayload> => {
   );
 
   const instances = await database.getAllAsync<ChecklistInstance>(
-    'SELECT * FROM checklist_instances WHERE status = ? AND sync_status IS NULL LIMIT 100',
+    "SELECT * FROM checklist_instances WHERE status = ? AND (sync_status IS NULL OR sync_status = 'PENDING') LIMIT 100",
     ['COMPLETED']
   );
 
@@ -463,6 +532,39 @@ export const getPendingSyncPayload = async (): Promise<SyncPayload> => {
     instances: instances || [],
     timestamp: new Date().toISOString(),
   };
+};
+
+/**
+ * Returns results whose photo still needs to be uploaded to remote storage.
+ * The mobile sync layer uploads these first, then records the remote URL.
+ */
+export const getPendingPhotoUploads = async (): Promise<ChecklistResult[]> => {
+  const database = await getDatabase();
+  const result = await database.getAllAsync<ChecklistResult>(
+    `SELECT * FROM checklist_results
+     WHERE photo_sync_status = ? AND photo_local_uri IS NOT NULL
+     ORDER BY updated_at`,
+    ['PENDING']
+  );
+  return result || [];
+};
+
+/**
+ * Records that a result's photo has been uploaded to object storage.
+ * Marks the photo as UPLOADED and re-flags the row for metadata sync so the
+ * remote URL is propagated to the backend.
+ */
+export const markPhotoUploaded = async (
+  resultId: string,
+  remoteUrl: string
+): Promise<void> => {
+  const database = await getDatabase();
+  await database.runAsync(
+    `UPDATE checklist_results
+     SET photo_remote_url = ?, photo_sync_status = ?, sync_status = ?
+     WHERE id = ?`,
+    [remoteUrl, 'UPLOADED', 'PENDING', resultId]
+  );
 };
 
 export const markAsSynced = async (

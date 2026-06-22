@@ -26,13 +26,13 @@ Menu-driven, choose between debug, release, or local build.
 **Debug APK (for testing)**
 ```bash
 npm install
-npx expo build:android --type apk
+eas build --platform android --profile preview
 ```
 
 **Release APK (for production)**
 ```bash
 npm install
-npx expo build:android --type release
+eas build --platform android --profile production
 ```
 
 ### Option C: No Account Needed (Local Build)
@@ -189,13 +189,13 @@ Then rebuild to deploy new version.
 npx expo --version
 
 # See available build options
-npx expo build:android --help
+eas build --platform android --help
 
 # List previous builds
-npx expo build:android --list
+eas build:list --platform android
 
 # View recent build details
-npx expo build:android --fetch-status
+eas build:list --platform android
 ```
 
 ---

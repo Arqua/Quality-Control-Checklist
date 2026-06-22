@@ -4,7 +4,7 @@ export default function HomeLayout() {
   return (
     <Stack
       screenOptions={{
-        headerBackTitleVisible: false,
+        headerBackButtonDisplayMode: 'minimal',
       }}
     >
       <Stack.Screen

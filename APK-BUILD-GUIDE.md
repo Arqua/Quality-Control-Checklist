@@ -11,7 +11,7 @@ This guide walks you through building an APK for Android field testing without n
 npm install
 
 # 2. Build debug APK
-npx expo build:android --type apk
+eas build --platform android --profile preview
 
 # 3. When prompted:
 #    - You can create a free Expo account or skip
@@ -56,7 +56,7 @@ docker run --rm -it \
   -v $PWD:/app \
   -w /app \
   node:18-alpine \
-  sh -c 'npm install && npx expo build:android --type apk'
+  sh -c 'npm install && eas build --platform android --profile preview'
 ```
 
 ---
@@ -170,7 +170,7 @@ keytool -genkey -v -keystore my-release-key.keystore \
 ### Step 2: Build Release APK
 
 ```bash
-npx expo build:android --type release
+eas build --platform android --profile production
 ```
 
 ### Step 3: Upload to Play Store
@@ -191,7 +191,7 @@ npm install
 ### "Unable to create debuggable build"
 ```bash
 # Use --clear flag to rebuild from scratch
-npx expo build:android --type apk --clear
+eas build --platform android --profile preview --clear-cache
 ```
 
 ### "Gradle build failed"
@@ -259,7 +259,7 @@ jobs:
         with:
           node-version: '18'
       - run: npm install
-      - run: npx expo build:android --type apk
+      - run: eas build --platform android --profile preview
 ```
 
 ---
@@ -269,7 +269,7 @@ jobs:
 ### For Slow Networks
 ```bash
 # Use cache to skip rebuilds
-npx expo build:android --type apk --cache
+eas build --platform android --profile preview
 ```
 
 ### Smaller APK Size
@@ -280,7 +280,7 @@ npx expo build:android --type apk --cache
 ### Faster Rebuilds
 ```bash
 # Reuse previous build cache
-npx expo build:android --type apk --cache --clear
+eas build --platform android --profile preview --clear-cache
 ```
 
 ---
