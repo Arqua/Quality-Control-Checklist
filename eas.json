@@ -9,6 +9,9 @@
       }
     },
     "preview": {
+      "env": {
+        "EXPO_PUBLIC_SEED_DATA": "true"
+      },
       "android": {
         "buildType": "apk"
       }
