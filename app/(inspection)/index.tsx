@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -6,25 +6,25 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  Alert,
+  Image,
   Modal,
-  Dimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
-import Canvas, { CanvasRenderingContext2D } from 'react-native-canvas';
+import SignatureScreen, {
+  SignatureViewRef,
+} from 'react-native-signature-canvas';
 import { useChecklist } from '@/hooks/useChecklist';
-import * as db from '@/database/db';
-import { TemplateItem, ChecklistResult, ItemStatus } from '@/types/database';
-
-const WINDOW_HEIGHT = Dimensions.get('window').height;
+import { useNotification } from '@/components/Notification';
+import { capturePhoto, pickPhoto, PhotoResult } from '@/services/photos';
+import { ItemStatus } from '@/types/database';
 
 export default function InspectionScreen() {
   const insets = useSafeAreaInsets();
-  const router = useRouter();
   const params = useLocalSearchParams();
   const instanceId = params.instanceId as string;
+  const { notify } = useNotification();
 
   const {
     instance,
@@ -33,81 +33,115 @@ export default function InspectionScreen() {
     loading,
     syncing,
     error,
+    updateItem,
     updateItemStatus,
     completeChecklist,
+    clearError,
   } = useChecklist(instanceId);
 
   const [showSignOff, setShowSignOff] = useState(false);
   const [inspectorSignature, setInspectorSignature] = useState<string | null>(null);
   const [pmSignature, setPmSignature] = useState<string | null>(null);
-  const canvasRef = useRef<Canvas>(null);
-  const contextRef = useRef<CanvasRenderingContext2D | null>(null);
-  const [isSigningInspector, setIsSigningInspector] = useState(true);
+  // Local, per-item comment buffer so typing doesn't hit SQLite on every keystroke.
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
 
-  const getItemResult = (itemId: string) => {
-    return results.get(itemId);
-  };
+  // Surface hook errors as toasts.
+  useEffect(() => {
+    if (error) {
+      notify({ type: 'error', message: error });
+      clearError();
+    }
+  }, [error, notify, clearError]);
+
+  const getItemResult = (itemId: string) => results.get(itemId);
 
   const getProgressStats = () => {
     const total = items.length;
-    const completed = Array.from(results.values()).length;
-    const passed = Array.from(results.values()).filter(r => r.status === 'PASS').length;
-    const failed = Array.from(results.values()).filter(r => r.status === 'FAIL').length;
-
-    return { total, completed, passed, failed };
+    const values = Array.from(results.values());
+    return {
+      total,
+      completed: values.length,
+      passed: values.filter((r) => r.status === 'PASS').length,
+      failed: values.filter((r) => r.status === 'FAIL').length,
+    };
   };
 
-  const handleStatusChange = async (itemId: string, status: ItemStatus) => {
-    try {
-      await updateItemStatus(itemId, status);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to update item status');
+  const handleStatusChange = (itemId: string, status: ItemStatus) => {
+    updateItemStatus(itemId, status);
+  };
+
+  const persistComment = (itemId: string) => {
+    const draft = commentDrafts[itemId];
+    if (draft === undefined) return;
+    const existing = getItemResult(itemId);
+    if (!existing) return; // need a status first
+    if ((existing.comments ?? '') === draft) return;
+    updateItem(itemId, { comments: draft });
+  };
+
+  const handlePhoto = async (itemId: string, source: 'camera' | 'gallery') => {
+    const existing = getItemResult(itemId);
+    if (!existing) {
+      notify({ type: 'info', message: 'Choose Pass / Fail / N/A before adding a photo' });
+      return;
+    }
+
+    const result: PhotoResult =
+      source === 'camera' ? await capturePhoto() : await pickPhoto();
+
+    switch (result.status) {
+      case 'ok':
+        await updateItem(itemId, { photoUri: result.uri });
+        notify({ type: 'success', message: 'Photo attached' });
+        break;
+      case 'denied':
+        notify({
+          type: 'error',
+          message:
+            source === 'camera'
+              ? 'Camera permission denied. Enable it in Settings.'
+              : 'Photo library permission denied. Enable it in Settings.',
+        });
+        break;
+      case 'error':
+        notify({ type: 'error', message: result.message });
+        break;
+      case 'cancelled':
+      default:
+        break;
     }
   };
 
-  const handleAddComment = (itemId: string, comment: string) => {
-    const result = getItemResult(itemId);
-    if (result) {
-      handleStatusChange(itemId, result.status);
-    }
+  const handleRemovePhoto = (itemId: string) => {
+    updateItem(itemId, { photoUri: null });
   };
 
   const handleOpenSignOff = () => {
     if (instance?.status === 'COMPLETED') {
-      Alert.alert('Info', 'This checklist has already been signed off');
+      notify({ type: 'info', message: 'This checklist is already signed off' });
       return;
     }
+    setInspectorSignature(null);
+    setPmSignature(null);
     setShowSignOff(true);
-    setIsSigningInspector(true);
   };
 
   const handleSubmitSignOff = async () => {
-    if (!inspectorSignature && !pmSignature) {
-      Alert.alert('Error', 'At least inspector signature is required');
+    if (!inspectorSignature) {
+      notify({ type: 'error', message: 'Inspector signature is required' });
       return;
     }
-
+    setSubmitting(true);
     try {
-      const signature = inspectorSignature || 'No signature';
-      await completeChecklist(signature, pmSignature || undefined);
+      await completeChecklist(inspectorSignature, pmSignature ?? undefined);
       setShowSignOff(false);
-      Alert.alert('Success', 'Checklist signed off and marked complete');
-    } catch (error) {
-      Alert.alert('Error', 'Failed to sign off checklist');
+      notify({ type: 'success', message: 'Checklist signed off and completed' });
+    } catch {
+      notify({ type: 'error', message: 'Failed to sign off checklist' });
+    } finally {
+      setSubmitting(false);
     }
-  };
-
-  const handleDrawing = (x: number, y: number) => {
-    if (!contextRef.current) return;
-
-    const ctx = contextRef.current;
-    ctx.lineWidth = 2;
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = '#000000';
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x + 1, y + 1);
-    ctx.stroke();
   };
 
   if (loading) {
@@ -129,16 +163,15 @@ export default function InspectionScreen() {
   const stats = getProgressStats();
   const progressPercent = stats.total > 0 ? (stats.completed / stats.total) * 100 : 0;
   const isComplete = stats.completed === stats.total && stats.total > 0;
+  const isCompleted = instance.status === 'COMPLETED';
 
   return (
     <View className="flex-1 bg-construction-light">
       {/* Progress Header */}
-      <View className="bg-construction-dark px-4 py-4 pt-6" style={{ paddingTop: insets.top + 10 }}>
+      <View className="bg-construction-dark px-4 py-4" style={{ paddingTop: insets.top + 10 }}>
         <View className="flex-row justify-between items-center mb-3">
           <View>
-            <Text className="text-white font-bold text-lg">
-              {items.length} Items
-            </Text>
+            <Text className="text-white font-bold text-lg">{items.length} Items</Text>
             <Text className="text-construction-light text-xs">
               {stats.passed} Pass • {stats.failed} Fail
             </Text>
@@ -151,7 +184,6 @@ export default function InspectionScreen() {
           )}
         </View>
 
-        {/* Progress Bar */}
         <View className="bg-gray-700 rounded-full h-2 overflow-hidden mb-2">
           <View
             className="bg-construction-accent h-full"
@@ -169,18 +201,15 @@ export default function InspectionScreen() {
         contentContainerStyle={{
           paddingHorizontal: 12,
           paddingVertical: 12,
-          paddingBottom: insets.bottom + 80,
+          paddingBottom: insets.bottom + 90,
         }}
       >
         {items.map((item, index) => {
           const result = getItemResult(item.id);
+          const draft = commentDrafts[item.id] ?? result?.comments ?? '';
 
           return (
-            <View
-              key={item.id}
-              className="bg-white rounded-lg p-4 mb-3 border border-gray-200"
-            >
-              {/* Item Number & Status */}
+            <View key={item.id} className="bg-white rounded-lg p-4 mb-3 border border-gray-200">
               <View className="flex-row justify-between items-start mb-2">
                 <Text className="text-gray-500 text-xs font-semibold">
                   Item {index + 1} of {items.length}
@@ -214,14 +243,14 @@ export default function InspectionScreen() {
                 )}
               </View>
 
-              {/* Description */}
               <Text className="text-gray-800 font-semibold text-sm mb-4 leading-5">
                 {item.description_text}
               </Text>
 
-              {/* Action Buttons */}
+              {/* Pass / Fail / N/A */}
               <View className="flex-row gap-2 mb-4">
                 <TouchableOpacity
+                  disabled={isCompleted}
                   onPress={() => handleStatusChange(item.id, 'PASS')}
                   className={`flex-1 py-2 px-3 rounded-lg border-2 flex-row items-center justify-center ${
                     result?.status === 'PASS'
@@ -236,9 +265,7 @@ export default function InspectionScreen() {
                   />
                   <Text
                     className={`text-xs font-bold ml-1 ${
-                      result?.status === 'PASS'
-                        ? 'text-green-700'
-                        : 'text-green-600'
+                      result?.status === 'PASS' ? 'text-green-700' : 'text-green-600'
                     }`}
                   >
                     PASS
@@ -246,6 +273,7 @@ export default function InspectionScreen() {
                 </TouchableOpacity>
 
                 <TouchableOpacity
+                  disabled={isCompleted}
                   onPress={() => handleStatusChange(item.id, 'FAIL')}
                   className={`flex-1 py-2 px-3 rounded-lg border-2 flex-row items-center justify-center ${
                     result?.status === 'FAIL'
@@ -260,9 +288,7 @@ export default function InspectionScreen() {
                   />
                   <Text
                     className={`text-xs font-bold ml-1 ${
-                      result?.status === 'FAIL'
-                        ? 'text-red-700'
-                        : 'text-red-600'
+                      result?.status === 'FAIL' ? 'text-red-700' : 'text-red-600'
                     }`}
                   >
                     FAIL
@@ -270,6 +296,7 @@ export default function InspectionScreen() {
                 </TouchableOpacity>
 
                 <TouchableOpacity
+                  disabled={isCompleted}
                   onPress={() => handleStatusChange(item.id, 'NA')}
                   className={`flex-1 py-2 px-3 rounded-lg border-2 flex-row items-center justify-center ${
                     result?.status === 'NA'
@@ -284,9 +311,7 @@ export default function InspectionScreen() {
                   />
                   <Text
                     className={`text-xs font-bold ml-1 ${
-                      result?.status === 'NA'
-                        ? 'text-gray-700'
-                        : 'text-gray-600'
+                      result?.status === 'NA' ? 'text-gray-700' : 'text-gray-600'
                     }`}
                   >
                     N/A
@@ -294,26 +319,88 @@ export default function InspectionScreen() {
                 </TouchableOpacity>
               </View>
 
-              {/* Comments & Photo Section */}
+              {/* Comments & Photo (only after a status is chosen) */}
               {result && (
                 <View>
                   <TextInput
                     placeholder="Add comments or discrepancies..."
-                    value={result.comments || ''}
-                    onChangeText={text =>
-                      handleAddComment(item.id, text)
+                    value={draft}
+                    editable={!isCompleted}
+                    onChangeText={(text) =>
+                      setCommentDrafts((prev) => ({ ...prev, [item.id]: text }))
                     }
+                    onBlur={() => persistComment(item.id)}
                     multiline
                     numberOfLines={2}
                     className="bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-sm mb-3"
                     placeholderTextColor="#9CA3AF"
                   />
 
-                  {/* Photo Placeholder */}
-                  <TouchableOpacity className="bg-gray-100 rounded-lg py-6 border-2 border-dashed border-gray-400 flex-row items-center justify-center">
-                    <MaterialIcons name="photo-camera" size={20} color="#6B7280" />
-                    <Text className="text-gray-600 text-sm ml-2">Add Photo</Text>
-                  </TouchableOpacity>
+                  {result.photo_local_uri ? (
+                    <View className="rounded-lg overflow-hidden border border-gray-300">
+                      <Image
+                        source={{ uri: result.photo_local_uri }}
+                        style={{ width: '100%', height: 180 }}
+                        resizeMode="cover"
+                      />
+                      <View className="flex-row items-center justify-between px-3 py-2 bg-gray-50">
+                        <View className="flex-row items-center">
+                          <MaterialIcons
+                            name={
+                              result.photo_sync_status === 'UPLOADED'
+                                ? 'cloud-done'
+                                : 'cloud-upload'
+                            }
+                            size={16}
+                            color={
+                              result.photo_sync_status === 'UPLOADED'
+                                ? '#059669'
+                                : '#6B7280'
+                            }
+                          />
+                          <Text className="text-xs text-gray-600 ml-1">
+                            {result.photo_sync_status === 'UPLOADED'
+                              ? 'Uploaded'
+                              : 'Pending upload'}
+                          </Text>
+                        </View>
+                        {!isCompleted && (
+                          <TouchableOpacity
+                            onPress={() => handleRemovePhoto(item.id)}
+                            className="flex-row items-center"
+                          >
+                            <MaterialIcons name="delete" size={16} color="#DC2626" />
+                            <Text className="text-xs text-red-600 ml-1 font-semibold">
+                              Remove
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+                  ) : (
+                    !isCompleted && (
+                      <View className="flex-row gap-2">
+                        <TouchableOpacity
+                          onPress={() => handlePhoto(item.id, 'camera')}
+                          className="flex-1 bg-gray-100 rounded-lg py-3 border-2 border-dashed border-gray-400 flex-row items-center justify-center"
+                        >
+                          <MaterialIcons name="photo-camera" size={18} color="#6B7280" />
+                          <Text className="text-gray-600 text-xs ml-2 font-semibold">
+                            Camera
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => handlePhoto(item.id, 'gallery')}
+                          className="flex-1 bg-gray-100 rounded-lg py-3 border-2 border-dashed border-gray-400 flex-row items-center justify-center"
+                        >
+                          <MaterialIcons name="photo-library" size={18} color="#6B7280" />
+                          <Text className="text-gray-600 text-xs ml-2 font-semibold">
+                            Gallery
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    )
+                  )}
                 </View>
               )}
             </View>
@@ -321,33 +408,29 @@ export default function InspectionScreen() {
         })}
       </ScrollView>
 
-      {/* Bottom Actions */}
+      {/* Bottom Action */}
       <View
         className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-300 px-4 py-3"
         style={{ paddingBottom: insets.bottom + 12 }}
       >
         <TouchableOpacity
           onPress={handleOpenSignOff}
-          disabled={!isComplete || instance.status === 'COMPLETED'}
+          disabled={!isComplete || isCompleted}
           className={`py-3 px-4 rounded-lg flex-row items-center justify-center ${
-            !isComplete || instance.status === 'COMPLETED'
-              ? 'bg-gray-300'
-              : 'bg-construction-orange'
+            !isComplete || isCompleted ? 'bg-gray-300' : 'bg-construction-orange'
           }`}
         >
           <MaterialIcons
-            name="edit"
+            name={isCompleted ? 'verified' : 'edit'}
             size={20}
-            color={!isComplete || instance.status === 'COMPLETED' ? '#9CA3AF' : 'white'}
+            color={!isComplete || isCompleted ? '#9CA3AF' : 'white'}
           />
           <Text
             className={`font-bold text-base ml-2 ${
-              !isComplete || instance.status === 'COMPLETED'
-                ? 'text-gray-600'
-                : 'text-white'
+              !isComplete || isCompleted ? 'text-gray-600' : 'text-white'
             }`}
           >
-            Sign Off & Complete
+            {isCompleted ? 'Signed Off' : 'Sign Off & Complete'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -360,7 +443,7 @@ export default function InspectionScreen() {
         onRequestClose={() => setShowSignOff(false)}
       >
         <View className="flex-1 bg-black/50 justify-center items-center px-4">
-          <View className="bg-white rounded-2xl w-full p-6 max-h-[90%]">
+          <View className="bg-white rounded-2xl w-full p-6 max-h-[92%]">
             <View className="flex-row justify-between items-center mb-4">
               <Text className="text-lg font-bold text-construction-dark">
                 Sign Off Checklist
@@ -371,49 +454,27 @@ export default function InspectionScreen() {
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
-              {/* Inspector Signature Section */}
-              <View className="mb-6">
-                <Text className="font-bold text-construction-dark mb-2">
-                  Inspector Signature
-                </Text>
-                <View className="bg-gray-100 rounded-lg border-2 border-gray-300 h-48 overflow-hidden">
-                  <View className="flex-1 bg-white">
-                    <Text className="text-gray-500 text-center mt-20">
-                      Signature canvas (placeholder)
-                    </Text>
-                  </View>
-                </View>
-                <Text className="text-xs text-gray-600 mt-2">
-                  {inspectorSignature ? '✓ Signed' : 'Sign to proceed'}
-                </Text>
-              </View>
+              <SignaturePad
+                label="Inspector Signature (required)"
+                signed={!!inspectorSignature}
+                onChange={setInspectorSignature}
+              />
+              <SignaturePad
+                label="Project Manager Signature (optional)"
+                signed={!!pmSignature}
+                onChange={setPmSignature}
+              />
 
-              {/* PM Signature Section */}
-              <View className="mb-6">
-                <Text className="font-bold text-construction-dark mb-2">
-                  Project Manager Signature (Optional)
-                </Text>
-                <View className="bg-gray-100 rounded-lg border-2 border-gray-300 h-48 overflow-hidden">
-                  <View className="flex-1 bg-white">
-                    <Text className="text-gray-500 text-center mt-20">
-                      Signature canvas (placeholder)
-                    </Text>
-                  </View>
-                </View>
-              </View>
-
-              {/* Notes */}
-              <View className="bg-blue-50 rounded-lg p-3 mb-4 border border-blue-200">
+              <View className="bg-blue-50 rounded-lg p-3 mb-2 border border-blue-200">
                 <View className="flex-row">
                   <MaterialIcons name="info" size={16} color="#004E89" />
                   <Text className="text-xs text-construction-dark ml-2 flex-1">
-                    Both signatures will be stored locally and synced to the backend when online.
+                    Signatures are stored locally and synced to the backend when online.
                   </Text>
                 </View>
               </View>
             </ScrollView>
 
-            {/* Modal Actions */}
             <View className="flex-row gap-3 mt-4 pt-4 border-t border-gray-200">
               <TouchableOpacity
                 onPress={() => setShowSignOff(false)}
@@ -423,14 +484,80 @@ export default function InspectionScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleSubmitSignOff}
-                className="flex-1 bg-construction-orange rounded-lg py-3 items-center"
+                disabled={submitting}
+                className={`flex-1 rounded-lg py-3 items-center ${
+                  submitting ? 'bg-gray-300' : 'bg-construction-orange'
+                }`}
               >
-                <Text className="text-white font-bold">Submit</Text>
+                {submitting ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text className="text-white font-bold">Submit</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
+    </View>
+  );
+}
+
+/**
+ * A single signature capture surface backed by react-native-signature-canvas.
+ * Emits a base64 PNG via `onChange` when captured, or `null` when cleared.
+ */
+function SignaturePad({
+  label,
+  signed,
+  onChange,
+}: {
+  label: string;
+  signed: boolean;
+  onChange: (signature: string | null) => void;
+}) {
+  const ref = useRef<SignatureViewRef>(null);
+
+  // Hide the library's default footer; we drive it with our own buttons.
+  const webStyle = `
+    .m-signature-pad--footer { display: none; margin: 0; }
+    .m-signature-pad { box-shadow: none; border: none; }
+    body, html { width: 100%; height: 100%; margin: 0; }
+  `;
+
+  return (
+    <View className="mb-6">
+      <Text className="font-bold text-construction-dark mb-2">{label}</Text>
+      <View className="border-2 border-gray-300 rounded-lg overflow-hidden" style={{ height: 200 }}>
+        <SignatureScreen
+          ref={ref}
+          onOK={(sig) => onChange(sig)}
+          onEmpty={() => onChange(null)}
+          webStyle={webStyle}
+          backgroundColor="#ffffff"
+          penColor="#000000"
+        />
+      </View>
+      <View className="flex-row justify-between items-center mt-2">
+        <Text className="text-xs text-gray-600">
+          {signed ? '✓ Captured' : 'Sign in the box above'}
+        </Text>
+        <View className="flex-row gap-3">
+          <TouchableOpacity
+            onPress={() => {
+              ref.current?.clearSignature();
+              onChange(null);
+            }}
+          >
+            <Text className="text-xs font-semibold text-gray-600">Clear</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => ref.current?.readSignature()}>
+            <Text className="text-xs font-semibold text-construction-orange">
+              Capture
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
     </View>
   );
 }

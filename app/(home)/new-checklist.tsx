@@ -6,17 +6,18 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as db from '@/database/db';
+import { useNotification } from '@/components/Notification';
 import { Template } from '@/types/database';
 
 export default function NewChecklistScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { notify } = useNotification();
   const params = useLocalSearchParams();
   const projectId = params.projectId as string;
 
@@ -36,7 +37,7 @@ export default function NewChecklistScreen() {
       const templatesList = await db.getAllTemplates();
       setTemplates(templatesList);
     } catch (error) {
-      Alert.alert('Error', 'Failed to load templates');
+      notify({ type: 'error', message: 'Failed to load templates' });
     } finally {
       setLoading(false);
     }
@@ -44,12 +45,12 @@ export default function NewChecklistScreen() {
 
   const handleCreateChecklist = async () => {
     if (!selectedTemplate) {
-      Alert.alert('Error', 'Please select a template');
+      notify({ type: 'info', message: 'Please select a template' });
       return;
     }
 
     if (!inspectorName.trim()) {
-      Alert.alert('Error', 'Please enter inspector name');
+      notify({ type: 'info', message: 'Please enter inspector name' });
       return;
     }
 
@@ -66,7 +67,7 @@ export default function NewChecklistScreen() {
         params: { instanceId: instance.id },
       });
     } catch (error) {
-      Alert.alert('Error', 'Failed to create checklist');
+      notify({ type: 'error', message: 'Failed to create checklist' });
       setCreating(false);
     }
   };

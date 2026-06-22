@@ -3,27 +3,61 @@
     "name": "QC Checklist",
     "slug": "qc-checklist",
     "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "qcchecklist",
+    "userInterfaceStyle": "light",
+    "privacy": "public",
+    "privacyPolicyUrl": "https://arqua.github.io/quality-control-checklist/privacy-policy",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#004E89"
+    },
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
-      "supportsTabletMode": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.arqua.qcchecklist",
+      "infoPlist": {
+        "NSCameraUsageDescription": "QC Checklist uses the camera to let inspectors photograph quality-control discrepancies and attach them to checklist items as on-site evidence.",
+        "NSPhotoLibraryUsageDescription": "QC Checklist accesses your photo library so inspectors can attach existing site photos to checklist items as evidence."
+      }
     },
     "android": {
-      "package": "com.arqua.qcchecklist"
+      "package": "com.arqua.qcchecklist",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#004E89"
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_MEDIA_IMAGES"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
     },
     "plugins": [
       [
+        "expo-router",
+        {
+          "origin": false,
+          "asyncRoutes": true
+        }
+      ],
+      [
         "expo-camera",
         {
-          "cameraPermission": "Allow QC Checklist to access your camera for site documentation"
+          "cameraPermission": "QC Checklist uses the camera to let inspectors photograph quality-control discrepancies and attach them to checklist items as on-site evidence."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow QC Checklist to access photos for site documentation",
-          "cameraPermission": "Allow QC Checklist to access camera for site documentation"
+          "photosPermission": "QC Checklist accesses your photo library so inspectors can attach existing site photos to checklist items as evidence.",
+          "cameraPermission": "QC Checklist uses the camera to let inspectors photograph quality-control discrepancies and attach them to checklist items as on-site evidence."
         }
       ]
     ]

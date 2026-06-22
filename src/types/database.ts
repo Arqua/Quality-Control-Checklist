@@ -2,6 +2,15 @@ export type ItemStatus = 'PASS' | 'FAIL' | 'NA';
 export type ChecklistStatus = 'DRAFT' | 'COMPLETED';
 export type SyncStatus = 'PENDING' | 'SYNCED';
 
+/**
+ * Tracks the lifecycle of a photo attachment as it moves from the device's
+ * local filesystem up to remote object storage (e.g. an S3 bucket).
+ * - NONE:     no photo attached to this result
+ * - PENDING:  photo captured locally, not yet uploaded
+ * - UPLOADED: photo uploaded; `photo_remote_url` is populated
+ */
+export type PhotoSyncStatus = 'NONE' | 'PENDING' | 'UPLOADED';
+
 export interface Project {
   id: string;
   name: string;
@@ -33,6 +42,7 @@ export interface ChecklistInstance {
   signed_off_at?: string | null;
   inspector_signature?: string | null;
   pm_signature?: string | null;
+  sync_status?: SyncStatus | null;
 }
 
 export interface ChecklistResult {
@@ -41,7 +51,12 @@ export interface ChecklistResult {
   template_item_id: string;
   status: ItemStatus;
   comments?: string | null;
+  /** Local file:// URI of the captured/selected photo on the device. */
   photo_local_uri?: string | null;
+  /** Remote object-storage URL once the photo has been uploaded. */
+  photo_remote_url?: string | null;
+  /** Upload lifecycle for the attached photo. */
+  photo_sync_status: PhotoSyncStatus;
   sync_status: SyncStatus;
   created_at: string;
   updated_at: string;

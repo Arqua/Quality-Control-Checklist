@@ -5,18 +5,19 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
-  Dimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as db from '@/database/db';
+import { runSync } from '@/services/sync';
+import { useNotification } from '@/components/Notification';
 import { Project, ChecklistInstance } from '@/types/database';
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { notify } = useNotification();
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [activeChecklists, setActiveChecklists] = useState<ChecklistInstance[]>([]);
@@ -37,7 +38,7 @@ export default function HomeScreen() {
         selectProject(projectsList[0]);
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to load projects');
+      notify({ type: 'error', message: 'Failed to load projects' });
       console.error(error);
     } finally {
       setLoading(false);
@@ -50,13 +51,13 @@ export default function HomeScreen() {
       const checklists = await db.getChecklistInstancesByProject(project.id);
       setActiveChecklists(checklists);
     } catch (error) {
-      Alert.alert('Error', 'Failed to load checklists');
+      notify({ type: 'error', message: 'Failed to load checklists' });
     }
   };
 
   const handleNewChecklist = () => {
     if (!selectedProject) {
-      Alert.alert('Error', 'Please select a project first');
+      notify({ type: 'info', message: 'Please select a project first' });
       return;
     }
     router.push({
@@ -75,19 +76,34 @@ export default function HomeScreen() {
   const handleManualSync = async () => {
     setSyncing(true);
     try {
-      const payload = await db.getPendingSyncPayload();
+      const result = await runSync();
 
-      if (payload.results.length === 0 && payload.punchItems.length === 0) {
-        Alert.alert('Sync', 'No pending items to sync');
+      if (!result.ok) {
+        notify({
+          type: 'error',
+          message: result.reason ?? 'Sync failed — will retry automatically',
+        });
+      } else if (
+        result.syncedResults === 0 &&
+        result.syncedPunchItems === 0 &&
+        result.uploadedPhotos === 0 &&
+        result.syncedInstances === 0
+      ) {
+        notify({ type: 'info', message: 'Everything is already up to date' });
       } else {
-        // Stub - would connect to backend
-        Alert.alert(
-          'Sync',
-          `Queued: ${payload.results.length} results, ${payload.punchItems.length} punch items`
-        );
+        notify({
+          type: 'success',
+          message: `Synced ${result.syncedResults} results, ${result.syncedPunchItems} punch items, ${result.uploadedPhotos} photos`,
+        });
+        if (selectedProject) {
+          const checklists = await db.getChecklistInstancesByProject(
+            selectedProject.id
+          );
+          setActiveChecklists(checklists);
+        }
       }
     } catch (error) {
-      Alert.alert('Error', 'Sync failed');
+      notify({ type: 'error', message: 'Sync failed' });
     } finally {
       setSyncing(false);
     }

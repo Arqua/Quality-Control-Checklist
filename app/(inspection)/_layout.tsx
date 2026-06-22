@@ -4,7 +4,7 @@ export default function InspectionLayout() {
   return (
     <Stack
       screenOptions={{
-        headerBackTitleVisible: false,
+        headerBackButtonDisplayMode: 'minimal',
         headerTintColor: '#004E89',
         headerTitleStyle: {
           fontWeight: '600',
