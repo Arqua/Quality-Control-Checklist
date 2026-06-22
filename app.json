@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "QC Checklist",
+    "slug": "qc-checklist",
+    "version": "1.0.0",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTabletMode": true
+    },
+    "android": {
+      "package": "com.arqua.qcchecklist"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow QC Checklist to access your camera for site documentation"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow QC Checklist to access photos for site documentation",
+          "cameraPermission": "Allow QC Checklist to access camera for site documentation"
+        }
+      ]
+    ]
+  }
+}
