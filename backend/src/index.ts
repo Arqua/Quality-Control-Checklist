@@ -7,8 +7,11 @@ import { authenticateToken, canAccessProject } from './auth';
 import {
   validateSyncPayload,
   collectInstanceIds,
+  validateAlertsPayload,
+  validateDeviceRegistration,
 } from './validation';
 import { storePhoto } from './storage';
+import { pushAlert } from './push';
 
 dotenv.config();
 
@@ -262,12 +265,230 @@ app.get('/api/templates', async (_req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /api/devices
+ * Registers (or refreshes) the caller's Expo push token so their device can
+ * receive management alert push notifications. Upserts on the token itself so a
+ * reinstall/refresh updates the existing row rather than creating duplicates.
+ */
+app.post('/api/devices', async (req: Request, res: Response) => {
+  const validation = validateDeviceRegistration(req.body);
+  if (!validation.valid) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid device registration',
+      details: validation.errors,
+    });
+  }
+
+  const { expoPushToken, role, projectIds } = req.body;
+  try {
+    await pool.query(
+      `INSERT INTO device_tokens (user_id, expo_push_token, role, project_ids, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, NOW(), NOW())
+       ON CONFLICT (expo_push_token)
+       DO UPDATE SET user_id = EXCLUDED.user_id,
+                     role = EXCLUDED.role,
+                     project_ids = EXCLUDED.project_ids,
+                     updated_at = NOW()`,
+      [
+        req.user?.id ?? null,
+        expoPushToken,
+        role ?? req.user?.role ?? null,
+        projectIds ?? req.user?.projectIds ?? null,
+      ]
+    );
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('[DEVICE REGISTER ERROR]', error);
+    return res.status(500).json({ success: false, error: 'Failed to register device' });
+  }
+});
+
+/**
+ * Returns the Expo push tokens of every manager who should receive an alert,
+ * excluding the user who raised it. Honours project scoping: a manager
+ * restricted to specific projects only receives alerts for those projects;
+ * managers with no project restriction receive all.
+ */
+async function getAlertRecipientTokens(
+  client: PoolClient,
+  projectId: string | null,
+  excludeUserId: string | null
+): Promise<string[]> {
+  const { rows } = await client.query(
+    `SELECT expo_push_token, project_ids
+       FROM device_tokens
+      WHERE role IN ('manager', 'admin')
+        AND ($1::uuid IS NULL OR user_id IS NULL OR user_id <> $1)`,
+    [excludeUserId]
+  );
+
+  return rows
+    .filter((row) => {
+      const scoped: string[] | null = row.project_ids;
+      if (!scoped || scoped.length === 0) return true; // unrestricted manager
+      if (!projectId) return true; // alert has no project; don't hide it
+      return scoped.includes(projectId);
+    })
+    .map((row) => row.expo_push_token as string);
+}
+
+/**
+ * POST /api/alerts
+ * Receives serious (HIGH-severity) events recorded on a device, persists them,
+ * and fans out an Expo push notification to other managers' registered devices.
+ * Idempotent on alert id so re-syncs don't duplicate or re-notify.
+ */
+app.post('/api/alerts', async (req: Request, res: Response) => {
+  const validation = validateAlertsPayload(req.body);
+  if (!validation.valid) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid alerts payload',
+      details: validation.errors,
+    });
+  }
+
+  const { alerts } = req.body as { alerts: any[] };
+  const client = await pool.connect();
+  try {
+    // Enforce project access for any alert that names a project.
+    for (const alert of alerts) {
+      if (alert.project_id && !canAccessProject(req.user, alert.project_id)) {
+        return res.status(403).json({
+          success: false,
+          error: `Not authorized to raise alerts on project ${alert.project_id}`,
+        });
+      }
+    }
+
+    const accepted: string[] = [];
+    let pushed = 0;
+
+    for (const alert of alerts) {
+      // Insert only if new; ON CONFLICT tells us whether a push is warranted.
+      const inserted = await client.query(
+        `INSERT INTO alerts
+         (id, instance_id, result_id, project_id, title, body, severity, acknowledged, created_by, created_at, received_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE, $8, $9, NOW())
+         ON CONFLICT (id) DO NOTHING
+         RETURNING id`,
+        [
+          alert.id,
+          alert.instance_id,
+          alert.result_id ?? null,
+          alert.project_id ?? null,
+          alert.title,
+          alert.body,
+          alert.severity,
+          req.user?.id ?? null,
+          alert.created_at,
+        ]
+      );
+
+      accepted.push(alert.id);
+
+      // Fan out only for newly-stored HIGH-severity alerts (avoids re-notifying
+      // on re-sync and keeps low/medium events inbox-only).
+      if (inserted.rows.length > 0 && alert.severity === 'HIGH') {
+        const tokens = await getAlertRecipientTokens(
+          client,
+          alert.project_id ?? null,
+          req.user?.id ?? null
+        );
+        const result = await pushAlert(tokens, alert);
+        pushed += result.sent;
+      }
+    }
+
+    return res.json({
+      success: true,
+      synced: { alertIds: accepted },
+      pushed,
+      serverTime: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('[ALERTS ERROR]', error);
+    return res.status(500).json({ success: false, error: 'Failed to store alerts' });
+  } finally {
+    client.release();
+  }
+});
+
+/**
+ * GET /api/alerts
+ * Returns alerts visible to the authenticated manager (newest first), so a
+ * manager who wasn't on the originating device still sees them in their inbox.
+ * Inspectors get an empty list. Supports `?since=<ISO>` for incremental pulls.
+ */
+app.get('/api/alerts', async (req: Request, res: Response) => {
+  if (req.user?.role !== 'manager' && req.user?.role !== 'admin') {
+    return res.json({ success: true, alerts: [] });
+  }
+
+  const since = req.query.since as string | undefined;
+  const restricted =
+    req.user?.role !== 'admin' &&
+    Array.isArray(req.user?.projectIds) &&
+    (req.user?.projectIds?.length ?? 0) > 0;
+
+  try {
+    const clauses: string[] = [];
+    const params: any[] = [];
+    if (since && !Number.isNaN(Date.parse(since))) {
+      params.push(since);
+      clauses.push(`created_at > $${params.length}`);
+    }
+    if (restricted) {
+      params.push(req.user?.projectIds);
+      // Include project-scoped alerts plus any project-less (global) alerts.
+      clauses.push(`(project_id = ANY($${params.length}::uuid[]) OR project_id IS NULL)`);
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+
+    const result = await pool.query(
+      `SELECT * FROM alerts ${where} ORDER BY created_at DESC LIMIT 500`,
+      params
+    );
+    return res.json({ success: true, alerts: result.rows });
+  } catch (error) {
+    console.error('[ALERTS FETCH ERROR]', error);
+    return res.status(500).json({ success: false, error: 'Failed to fetch alerts' });
+  }
+});
+
+/**
+ * POST /api/alerts/:id/acknowledge
+ * Marks an alert acknowledged server-side so it can clear across managers'
+ * devices on next pull.
+ */
+app.post('/api/alerts/:id/acknowledge', async (req: Request, res: Response) => {
+  if (req.user?.role !== 'manager' && req.user?.role !== 'admin') {
+    return res.status(403).json({ success: false, error: 'Management access required' });
+  }
+  try {
+    const result = await pool.query(
+      'UPDATE alerts SET acknowledged = TRUE WHERE id = $1 RETURNING id',
+      [req.params.id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Alert not found' });
+    }
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('[ALERT ACK ERROR]', error);
+    return res.status(500).json({ success: false, error: 'Failed to acknowledge alert' });
+  }
+});
+
 async function upsertChecklistResult(client: PoolClient, result: any) {
   const {
     id,
     instance_id,
     template_item_id,
     status,
+    severity,
     comments,
     photo_remote_url,
     photo_local_uri,
@@ -277,6 +498,8 @@ async function upsertChecklistResult(client: PoolClient, result: any) {
 
   // Prefer the uploaded remote URL; fall back to whatever URI the client sent.
   const photoUri = photo_remote_url ?? photo_local_uri ?? null;
+  // Severity only applies to failures; clear it for any other status.
+  const resolvedSeverity = status === 'FAIL' ? severity ?? null : null;
 
   const existing = await client.query(
     'SELECT updated_at FROM checklist_results WHERE id = $1',
@@ -286,16 +509,16 @@ async function upsertChecklistResult(client: PoolClient, result: any) {
   if (existing.rows.length === 0) {
     await client.query(
       `INSERT INTO checklist_results
-       (id, instance_id, template_item_id, status, comments, photo_uri, created_at, updated_at, synced_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
-      [id, instance_id, template_item_id, status, comments ?? null, photoUri, created_at, updated_at]
+       (id, instance_id, template_item_id, status, severity, comments, photo_uri, created_at, updated_at, synced_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
+      [id, instance_id, template_item_id, status, resolvedSeverity, comments ?? null, photoUri, created_at, updated_at]
     );
   } else if (new Date(updated_at) > new Date(existing.rows[0].updated_at)) {
     await client.query(
       `UPDATE checklist_results
-       SET status = $1, comments = $2, photo_uri = COALESCE($3, photo_uri), updated_at = $4, synced_at = NOW()
-       WHERE id = $5`,
-      [status, comments ?? null, photoUri, updated_at, id]
+       SET status = $1, severity = $2, comments = $3, photo_uri = COALESCE($4, photo_uri), updated_at = $5, synced_at = NOW()
+       WHERE id = $6`,
+      [status, resolvedSeverity, comments ?? null, photoUri, updated_at, id]
     );
   }
 }
