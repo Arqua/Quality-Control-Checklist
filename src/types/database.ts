@@ -100,6 +100,20 @@ export interface Alert {
   created_at: string;
 }
 
+/**
+ * Activity log entry tracking team actions for collaboration and audit trail.
+ */
+export interface Activity {
+  id: string;
+  project_id: string;
+  instance_id?: string | null;
+  type: 'CHECKLIST_COMPLETED' | 'SEVERITY_FLAGGED' | 'PUNCH_ITEM_CLOSED' | 'NOTE_ADDED';
+  actor_name: string;
+  description: string;
+  severity?: Severity | null;
+  created_at: string;
+}
+
 export interface SyncPayload {
   results: ChecklistResult[];
   punchItems: PunchItem[];

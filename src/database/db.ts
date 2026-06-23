@@ -13,6 +13,7 @@ import {
   SyncPayload,
   Severity,
   Alert,
+  Activity,
 } from '../types/database';
 
 const DB_NAME = 'qc-checklist.db';
@@ -129,6 +130,22 @@ const initializeDatabase = async (database: SQLite.SQLiteDatabase) => {
         acknowledged INTEGER NOT NULL DEFAULT 0,
         sync_status TEXT NOT NULL DEFAULT 'PENDING',
         created_at TEXT NOT NULL
+      );
+    `);
+
+    // Activity log table — team actions for audit trail and collaboration
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS activities (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        instance_id TEXT,
+        type TEXT NOT NULL,
+        actor_name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        severity TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (project_id) REFERENCES projects(id),
+        FOREIGN KEY (instance_id) REFERENCES checklist_instances(id) ON DELETE CASCADE
       );
     `);
 
@@ -744,4 +761,66 @@ export const acknowledgeAlert = async (id: string): Promise<void> => {
     'UPDATE alerts SET acknowledged = 1 WHERE id = ?',
     [id]
   );
+};
+
+// ACTIVITY LOG — team collaboration and audit trail
+export const createActivity = async (params: {
+  projectId: string;
+  instanceId?: string | null;
+  type: 'CHECKLIST_COMPLETED' | 'SEVERITY_FLAGGED' | 'PUNCH_ITEM_CLOSED' | 'NOTE_ADDED';
+  actorName: string;
+  description: string;
+  severity?: Severity | null;
+}): Promise<Activity> => {
+  const database = await getDatabase();
+  const id = uuidv4();
+  const now = new Date().toISOString();
+
+  await database.runAsync(
+    `INSERT INTO activities
+     (id, project_id, instance_id, type, actor_name, description, severity, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      params.projectId,
+      params.instanceId ?? null,
+      params.type,
+      params.actorName,
+      params.description,
+      params.severity ?? null,
+      now,
+    ]
+  );
+
+  return {
+    id,
+    project_id: params.projectId,
+    instance_id: params.instanceId ?? null,
+    type: params.type,
+    actor_name: params.actorName,
+    description: params.description,
+    severity: params.severity ?? null,
+    created_at: now,
+  };
+};
+
+export const getActivitiesByProject = async (
+  projectId: string,
+  limit: number = 50
+): Promise<Activity[]> => {
+  const database = await getDatabase();
+  const rows = await database.getAllAsync<Activity>(
+    'SELECT * FROM activities WHERE project_id = ? ORDER BY created_at DESC LIMIT ?',
+    [projectId, limit]
+  );
+  return rows || [];
+};
+
+export const getRecentActivities = async (limit: number = 20): Promise<Activity[]> => {
+  const database = await getDatabase();
+  const rows = await database.getAllAsync<Activity>(
+    'SELECT * FROM activities ORDER BY created_at DESC LIMIT ?',
+    [limit]
+  );
+  return rows || [];
 };
