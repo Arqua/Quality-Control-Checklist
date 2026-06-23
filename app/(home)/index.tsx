@@ -205,6 +205,20 @@ export default function HomeScreen() {
             </TouchableOpacity>
           )}
 
+          <TouchableOpacity
+            onPress={() => router.push('/(home)/activity-log')}
+            className="p-2 mr-1"
+          >
+            <MaterialIcons name="history" size={24} color="white" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => router.push('/(home)/settings')}
+            className="p-2 mr-1"
+          >
+            <MaterialIcons name="settings" size={24} color="white" />
+          </TouchableOpacity>
+
           <TouchableOpacity onPress={logout} className="p-2">
             <AntDesign name="logout" size={22} color="white" />
           </TouchableOpacity>
