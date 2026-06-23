@@ -5,6 +5,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NotificationProvider } from '@/components/Notification';
 import { AuthProvider, useAuth } from '@/auth/authContext';
+import { I18nProvider } from '@/locales/i18nContext';
 import { requestNotificationPermissions } from '@/services/notifications';
 import { ActivityIndicator, View } from 'react-native';
 import { useEffect } from 'react';
@@ -53,12 +54,14 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <AuthProvider>
-          <NotificationProvider>
-            <RootLayoutContent />
-            <StatusBar style="light" />
-          </NotificationProvider>
-        </AuthProvider>
+        <I18nProvider>
+          <AuthProvider>
+            <NotificationProvider>
+              <RootLayoutContent />
+              <StatusBar style="light" />
+            </NotificationProvider>
+          </AuthProvider>
+        </I18nProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

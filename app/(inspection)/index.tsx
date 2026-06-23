@@ -103,6 +103,16 @@ export default function InspectionScreen() {
           body,
           severity: 'HIGH',
         });
+        await db.createActivity({
+          projectId: instance.project_id,
+          instanceId: instance.id,
+          type: 'SEVERITY_FLAGGED',
+          actorName: instance.inspector_name,
+          description: item
+            ? `${item.description_text} flagged HIGH`
+            : 'A HIGH-severity issue was flagged',
+          severity: 'HIGH',
+        });
         await pushLocalNotification(title, body, { instanceId: instance.id });
         notify({ type: 'info', message: 'Management notified of high-severity issue' });
       } catch (err) {
@@ -175,6 +185,16 @@ export default function InspectionScreen() {
     setSubmitting(true);
     try {
       await completeChecklist(inspectorSignature, pmSignature ?? undefined);
+      if (instance) {
+        const stats = getProgressStats();
+        await db.createActivity({
+          projectId: instance.project_id,
+          instanceId: instance.id,
+          type: 'CHECKLIST_COMPLETED',
+          actorName: instance.inspector_name,
+          description: `Completed inspection: ${stats.passed} passed, ${stats.failed} failed, ${stats.total - stats.passed - stats.failed} N/A`,
+        });
+      }
       setShowSignOff(false);
       notify({ type: 'success', message: 'Checklist signed off and completed' });
     } catch {
