@@ -2,6 +2,7 @@ import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import multer from 'multer';
+import jwt from 'jsonwebtoken';
 import { Pool, PoolClient } from 'pg';
 import { authenticateToken, canAccessProject } from './auth';
 import {
@@ -48,6 +49,53 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
 // Public health check (no auth).
 app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString(), uptime: process.uptime() });
+});
+
+/**
+ * POST /auth/login
+ * Validates credentials against hardcoded test accounts and returns a JWT.
+ * For production, replace with database user lookup + password hashing (bcrypt).
+ */
+app.post('/auth/login', async (req: Request, res: Response) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ success: false, error: 'Username and password required' });
+  }
+
+  const key = username.trim().toLowerCase();
+  const testAccounts: Record<string, { password: string; role: string }> = {
+    admin: { password: '1234', role: 'manager' },
+    manager: { password: '1234', role: 'manager' },
+    inspector: { password: '1234', role: 'inspector' },
+  };
+
+  const account = testAccounts[key];
+  if (!account || account.password !== password) {
+    return res.status(401).json({ success: false, error: 'Invalid credentials' });
+  }
+
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    console.error('[auth] JWT_SECRET not configured');
+    return res.status(500).json({ success: false, error: 'Server error' });
+  }
+
+  const token = jwt.sign(
+    {
+      sub: key,
+      username: key,
+      role: account.role,
+      iat: Math.floor(Date.now() / 1000),
+    },
+    secret,
+    { expiresIn: '7d' }
+  );
+
+  return res.json({
+    success: true,
+    token,
+    user: { username: key, role: account.role },
+  });
 });
 
 // Every /api route requires a valid bearer token.

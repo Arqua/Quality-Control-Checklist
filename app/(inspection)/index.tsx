@@ -17,6 +17,8 @@ import SignatureScreen, {
 } from 'react-native-signature-canvas';
 import { useChecklist } from '@/hooks/useChecklist';
 import { useNotification } from '@/components/Notification';
+import { useAuth } from '@/auth/authContext';
+import { useRouter } from 'expo-router';
 import { capturePhoto, pickPhoto, PhotoResult } from '@/services/photos';
 import { ItemStatus, Severity } from '@/types/database';
 import * as db from '@/database/db';
@@ -30,9 +32,11 @@ const SEVERITY_OPTIONS: { value: Severity; label: string }[] = [
 
 export default function InspectionScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const params = useLocalSearchParams();
   const instanceId = params.instanceId as string;
   const { notify } = useNotification();
+  const { token } = useAuth();
 
   const {
     instance,
@@ -45,7 +49,7 @@ export default function InspectionScreen() {
     updateItemStatus,
     completeChecklist,
     clearError,
-  } = useChecklist(instanceId);
+  } = useChecklist(instanceId, token ?? undefined);
 
   const [showSignOff, setShowSignOff] = useState(false);
   const [inspectorSignature, setInspectorSignature] = useState<string | null>(null);
@@ -229,6 +233,14 @@ export default function InspectionScreen() {
         <Text className="text-construction-light text-xs">
           {stats.completed} of {stats.total} completed ({Math.round(progressPercent)}%)
         </Text>
+
+        <TouchableOpacity
+          onPress={() => router.push({ pathname: '/(inspection)/punch-list', params: { instanceId } })}
+          className="mt-3 flex-row items-center justify-center bg-construction-accent/20 rounded-lg py-2"
+        >
+          <MaterialIcons name="assignment" size={16} color="#FFB627" />
+          <Text className="text-construction-accent text-xs font-semibold ml-1">Punch List</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Checklist Items */}

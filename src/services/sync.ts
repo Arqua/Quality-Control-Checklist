@@ -1,7 +1,7 @@
 import axios from 'axios';
 import * as db from '../database/db';
 import { SyncPayload } from '../types/database';
-import { API_BASE_URL, getAuthToken } from '../config/env';
+import { API_BASE_URL } from '../config/env';
 
 const REQUEST_TIMEOUT_MS = 15000;
 
@@ -15,8 +15,7 @@ export interface SyncResult {
   reason?: string;
 }
 
-const authHeaders = (): Record<string, string> => {
-  const token = getAuthToken();
+const authHeaders = (token?: string): Record<string, string> => {
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
@@ -25,7 +24,7 @@ const authHeaders = (): Record<string, string> => {
  * recording the returned remote URL against each result. Returns the number of
  * photos successfully uploaded. Failures are left PENDING for the next pass.
  */
-async function uploadPendingPhotos(baseUrl: string): Promise<number> {
+async function uploadPendingPhotos(baseUrl: string, token?: string): Promise<number> {
   const pending = await db.getPendingPhotoUploads();
   let uploaded = 0;
 
@@ -45,7 +44,7 @@ async function uploadPendingPhotos(baseUrl: string): Promise<number> {
 
       const res = await axios.post(`${baseUrl}/api/photos`, form, {
         timeout: REQUEST_TIMEOUT_MS,
-        headers: { 'Content-Type': 'multipart/form-data', ...authHeaders() },
+        headers: { 'Content-Type': 'multipart/form-data', ...authHeaders(token) },
       });
 
       const remoteUrl: string | undefined = res.data?.photoUrl;
@@ -68,7 +67,8 @@ async function uploadPendingPhotos(baseUrl: string): Promise<number> {
  */
 async function pushMetadata(
   baseUrl: string,
-  payload: SyncPayload
+  payload: SyncPayload,
+  token?: string
 ): Promise<{ results: number; punchItems: number; instances: number }> {
   if (
     payload.results.length === 0 &&
@@ -80,7 +80,7 @@ async function pushMetadata(
 
   const res = await axios.post(`${baseUrl}/api/sync`, payload, {
     timeout: REQUEST_TIMEOUT_MS,
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
   });
 
   if (res.status < 200 || res.status >= 300) {
@@ -108,8 +108,11 @@ async function pushMetadata(
  * Runs a full sync cycle: upload photos first (so metadata carries remote
  * URLs), then push metadata. Network/offline errors are swallowed and reported
  * via the returned {@link SyncResult} so the caller can retry later.
+ *
+ * @param token Optional JWT token from backend login. If not provided, sync
+ *              will proceed without authentication (offline-only mode).
  */
-export async function runSync(): Promise<SyncResult> {
+export async function runSync(token?: string): Promise<SyncResult> {
   if (!API_BASE_URL) {
     return {
       ok: false,
@@ -122,9 +125,9 @@ export async function runSync(): Promise<SyncResult> {
   }
 
   try {
-    const uploadedPhotos = await uploadPendingPhotos(API_BASE_URL);
+    const uploadedPhotos = await uploadPendingPhotos(API_BASE_URL, token);
     const payload = await db.getPendingSyncPayload();
-    const pushed = await pushMetadata(API_BASE_URL, payload);
+    const pushed = await pushMetadata(API_BASE_URL, payload, token);
 
     return {
       ok: true,
