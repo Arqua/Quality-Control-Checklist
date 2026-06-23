@@ -47,7 +47,11 @@ export function authenticateToken(
   }
 
   try {
-    const decoded = jwt.verify(token, secret) as Record<string, unknown>;
+    // Pin the algorithm to HS256 to prevent algorithm-confusion attacks
+    // (e.g. a token forged with `alg: none` or an asymmetric variant).
+    const decoded = jwt.verify(token, secret, {
+      algorithms: ['HS256'],
+    }) as Record<string, unknown>;
     req.user = {
       id: String(decoded.sub ?? decoded.id ?? ''),
       email: decoded.email as string | undefined,

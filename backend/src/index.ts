@@ -9,6 +9,7 @@ import {
   collectInstanceIds,
   validateAlertsPayload,
   validateDeviceRegistration,
+  isUuid,
 } from './validation';
 import { storePhoto } from './storage';
 import { pushAlert } from './push';
@@ -154,11 +155,10 @@ app.post('/api/sync', async (req: Request, res: Response) => {
       throw error;
     }
   } catch (error) {
+    // Log the detail server-side; return a generic message so internal error
+    // details (schema, constraints, etc.) are not disclosed to clients.
     console.error('[SYNC ERROR]', error);
-    return res.status(500).json({
-      success: false,
-      error: 'Sync failed: ' + (error instanceof Error ? error.message : 'Unknown error'),
-    });
+    return res.status(500).json({ success: false, error: 'Sync failed' });
   } finally {
     client.release();
   }
@@ -175,13 +175,18 @@ app.post('/api/photos', upload.single('photo'), async (req: Request, res: Respon
   if (!file) {
     return res.status(400).json({ success: false, error: 'No photo uploaded' });
   }
-  if (!resultId) {
-    return res.status(400).json({ success: false, error: 'resultId is required' });
+  // resultId must be a UUID: it is used both as a SQL key and to build the
+  // storage object key, so an unvalidated value enables path traversal /
+  // arbitrary object writes (e.g. `../../etc/...`).
+  if (!isUuid(resultId)) {
+    return res.status(400).json({ success: false, error: 'resultId must be a UUID' });
   }
 
   const client = await pool.connect();
   try {
-    // Authorize against the photo's owning project, if the result exists.
+    // The result must exist and the caller must be authorized for its project.
+    // Fail closed: a missing result is rejected rather than allowing a write to
+    // an arbitrary, unowned storage key.
     const { rows } = await client.query(
       `SELECT ci.project_id AS project_id
          FROM checklist_results cr
@@ -189,7 +194,10 @@ app.post('/api/photos', upload.single('photo'), async (req: Request, res: Respon
         WHERE cr.id = $1`,
       [resultId]
     );
-    if (rows.length > 0 && !canAccessProject(req.user, rows[0].project_id)) {
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Result not found' });
+    }
+    if (!canAccessProject(req.user, rows[0].project_id)) {
       return res.status(403).json({ success: false, error: 'Not authorized for this result' });
     }
 
@@ -281,7 +289,11 @@ app.post('/api/devices', async (req: Request, res: Response) => {
     });
   }
 
-  const { expoPushToken, role, projectIds } = req.body;
+  const { expoPushToken } = req.body;
+  // SECURITY: role and project scope are taken from the verified JWT only —
+  // never from the request body. Trusting client-supplied role/projectIds here
+  // would let any authenticated user register as a 'manager' for arbitrary
+  // projects and receive their alert push notifications.
   try {
     await pool.query(
       `INSERT INTO device_tokens (user_id, expo_push_token, role, project_ids, created_at, updated_at)
@@ -294,8 +306,8 @@ app.post('/api/devices', async (req: Request, res: Response) => {
       [
         req.user?.id ?? null,
         expoPushToken,
-        role ?? req.user?.role ?? null,
-        projectIds ?? req.user?.projectIds ?? null,
+        req.user?.role ?? null,
+        req.user?.projectIds ?? null,
       ]
     );
     return res.json({ success: true });
@@ -467,11 +479,29 @@ app.post('/api/alerts/:id/acknowledge', async (req: Request, res: Response) => {
   if (req.user?.role !== 'manager' && req.user?.role !== 'admin') {
     return res.status(403).json({ success: false, error: 'Management access required' });
   }
+  if (!isUuid(req.params.id)) {
+    return res.status(400).json({ success: false, error: 'Invalid alert id' });
+  }
+  // Project-restricted managers may only acknowledge alerts within their scope
+  // (plus global, project-less alerts). Admins and unrestricted managers may
+  // acknowledge any alert.
+  const restricted =
+    req.user?.role !== 'admin' &&
+    Array.isArray(req.user?.projectIds) &&
+    (req.user?.projectIds?.length ?? 0) > 0;
   try {
-    const result = await pool.query(
-      'UPDATE alerts SET acknowledged = TRUE WHERE id = $1 RETURNING id',
-      [req.params.id]
-    );
+    const result = restricted
+      ? await pool.query(
+          `UPDATE alerts SET acknowledged = TRUE
+             WHERE id = $1
+               AND (project_id = ANY($2::uuid[]) OR project_id IS NULL)
+           RETURNING id`,
+          [req.params.id, req.user?.projectIds]
+        )
+      : await pool.query(
+          'UPDATE alerts SET acknowledged = TRUE WHERE id = $1 RETURNING id',
+          [req.params.id]
+        );
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Alert not found' });
     }
