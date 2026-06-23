@@ -5,10 +5,20 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NotificationProvider } from '@/components/Notification';
 import { AuthProvider, useAuth } from '@/auth/authContext';
+import { requestNotificationPermissions } from '@/services/notifications';
 import { ActivityIndicator, View } from 'react-native';
+import { useEffect } from 'react';
 
 function RootLayoutContent() {
   const { isAuthenticated, isLoading } = useAuth();
+
+  // Ask for notification permission once a user is signed in so HIGH-severity
+  // events can surface as device notifications (works offline).
+  useEffect(() => {
+    if (isAuthenticated) {
+      requestNotificationPermissions();
+    }
+  }, [isAuthenticated]);
 
   if (isLoading) {
     return (
