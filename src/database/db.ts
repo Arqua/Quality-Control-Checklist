@@ -269,6 +269,40 @@ export const getTemplateItemsByTemplate = async (templateId: string): Promise<Te
   return result || [];
 };
 
+export const createTemplate = async (
+  name: string,
+  division: string
+): Promise<Template> => {
+  const database = await getDatabase();
+  const id = uuidv4();
+  const createdAt = new Date().toISOString();
+
+  await database.runAsync(
+    `INSERT INTO templates (id, name, division, created_at)
+     VALUES (?, ?, ?, ?)`,
+    [id, name, division, createdAt]
+  );
+
+  return { id, name, division, created_at: createdAt };
+};
+
+export const createTemplateItem = async (
+  templateId: string,
+  descriptionText: string,
+  sortOrder: number
+): Promise<TemplateItem> => {
+  const database = await getDatabase();
+  const id = uuidv4();
+
+  await database.runAsync(
+    `INSERT INTO template_items (id, template_id, description_text, sort_order)
+     VALUES (?, ?, ?, ?)`,
+    [id, templateId, descriptionText, sortOrder]
+  );
+
+  return { id, template_id: templateId, description_text: descriptionText, sort_order: sortOrder };
+};
+
 // CHECKLIST INSTANCE CRUD
 export const createChecklistInstance = async (
   projectId: string,

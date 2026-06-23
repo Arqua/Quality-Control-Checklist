@@ -4,25 +4,51 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NotificationProvider } from '@/components/Notification';
+import { AuthProvider, useAuth } from '@/auth/authContext';
+import { ActivityIndicator, View } from 'react-native';
+
+function RootLayoutContent() {
+  const { isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#004E89' }}>
+        <ActivityIndicator size="large" color="white" />
+      </View>
+    );
+  }
+
+  return (
+    <Stack
+      screenOptions={{
+        headerShown: false,
+      }}
+    >
+      {!isAuthenticated ? (
+        <Stack.Screen name="login" />
+      ) : (
+        <>
+          <Stack.Screen name="(home)" />
+          <Stack.Screen
+            name="(inspection)"
+            options={{ presentation: 'card' }}
+          />
+        </>
+      )}
+    </Stack>
+  );
+}
 
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <NotificationProvider>
-          <Stack
-            screenOptions={{
-              headerShown: false,
-            }}
-          >
-            <Stack.Screen name="(home)" />
-            <Stack.Screen
-              name="(inspection)"
-              options={{ presentation: 'card' }}
-            />
-          </Stack>
-          <StatusBar style="light" />
-        </NotificationProvider>
+        <AuthProvider>
+          <NotificationProvider>
+            <RootLayoutContent />
+            <StatusBar style="light" />
+          </NotificationProvider>
+        </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
