@@ -49,6 +49,12 @@
         }
       ],
       [
+        "expo-notifications",
+        {
+          "color": "#FF6B35"
+        }
+      ],
+      [
         "expo-camera",
         {
           "cameraPermission": "QC Checklist uses the camera to let inspectors photograph quality-control discrepancies and attach them to checklist items as on-site evidence."

@@ -11,6 +11,8 @@ import {
   ChecklistStatus,
   PhotoSyncStatus,
   SyncPayload,
+  Severity,
+  Alert,
 } from '../types/database';
 
 const DB_NAME = 'qc-checklist.db';
@@ -114,6 +116,22 @@ const initializeDatabase = async (database: SQLite.SQLiteDatabase) => {
       );
     `);
 
+    // Alerts table — serious (HIGH-severity) events surfaced to management.
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS alerts (
+        id TEXT PRIMARY KEY,
+        instance_id TEXT NOT NULL,
+        result_id TEXT,
+        project_id TEXT,
+        title TEXT NOT NULL,
+        body TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        acknowledged INTEGER NOT NULL DEFAULT 0,
+        sync_status TEXT NOT NULL DEFAULT 'PENDING',
+        created_at TEXT NOT NULL
+      );
+    `);
+
     // Apply migrations for databases created by older app versions.
     await runMigrations(database);
 
@@ -158,6 +176,7 @@ const runMigrations = async (database: SQLite.SQLiteDatabase) => {
     'photo_sync_status',
     "TEXT NOT NULL DEFAULT 'NONE'"
   );
+  await ensureColumn('checklist_results', 'severity', 'TEXT');
   await ensureColumn('checklist_instances', 'sync_status', 'TEXT');
 };
 
@@ -386,18 +405,21 @@ export const createChecklistResult = async (
   templateItemId: string,
   status: ItemStatus,
   comments?: string,
-  photoUri?: string
+  photoUri?: string,
+  severity?: Severity | null
 ): Promise<ChecklistResult> => {
   const database = await getDatabase();
   const id = uuidv4();
   const now = new Date().toISOString();
   const photoSyncStatus: PhotoSyncStatus = photoUri ? 'PENDING' : 'NONE';
+  // Severity only applies to failures.
+  const resolvedSeverity = status === 'FAIL' ? severity ?? null : null;
 
   await database.runAsync(
     `INSERT INTO checklist_results
-     (id, instance_id, template_item_id, status, comments, photo_local_uri, photo_remote_url, photo_sync_status, sync_status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, instanceId, templateItemId, status, comments || null, photoUri || null, null, photoSyncStatus, 'PENDING', now, now]
+     (id, instance_id, template_item_id, status, severity, comments, photo_local_uri, photo_remote_url, photo_sync_status, sync_status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, instanceId, templateItemId, status, resolvedSeverity, comments || null, photoUri || null, null, photoSyncStatus, 'PENDING', now, now]
   );
 
   // If FAIL, create punch item
@@ -416,6 +438,7 @@ export const createChecklistResult = async (
     instance_id: instanceId,
     template_item_id: templateItemId,
     status,
+    severity: resolvedSeverity,
     comments: comments || null,
     photo_local_uri: photoUri || null,
     photo_remote_url: null,
@@ -432,6 +455,7 @@ export const createChecklistResult = async (
  */
 export interface ChecklistResultPatch {
   status?: ItemStatus;
+  severity?: Severity | null;
   comments?: string | null;
   photoUri?: string | null;
 }
@@ -457,6 +481,13 @@ export const updateChecklistResult = async (
   const comments =
     patch.comments !== undefined ? patch.comments : existing.comments ?? null;
 
+  // Severity only applies to failures; a non-FAIL status clears it.
+  let severity: Severity | null =
+    patch.severity !== undefined ? patch.severity : existing.severity ?? null;
+  if (status !== 'FAIL') {
+    severity = null;
+  }
+
   let photoLocalUri = existing.photo_local_uri ?? null;
   let photoRemoteUrl = existing.photo_remote_url ?? null;
   let photoSyncStatus: PhotoSyncStatus = existing.photo_sync_status ?? 'NONE';
@@ -470,10 +501,10 @@ export const updateChecklistResult = async (
 
   await database.runAsync(
     `UPDATE checklist_results
-     SET status = ?, comments = ?, photo_local_uri = ?, photo_remote_url = ?,
+     SET status = ?, severity = ?, comments = ?, photo_local_uri = ?, photo_remote_url = ?,
          photo_sync_status = ?, updated_at = ?, sync_status = ?
      WHERE id = ?`,
-    [status, comments, photoLocalUri, photoRemoteUrl, photoSyncStatus, now, 'PENDING', id]
+    [status, severity, comments, photoLocalUri, photoRemoteUrl, photoSyncStatus, now, 'PENDING', id]
   );
 
   // If changing to FAIL and wasn't before, create punch item
@@ -633,4 +664,73 @@ export const markAsSynced = async (
       ['SYNCED', ...instanceIds]
     );
   }
+};
+
+// ALERTS CRUD — serious events surfaced to management.
+export const createAlert = async (params: {
+  instanceId: string;
+  resultId?: string | null;
+  projectId?: string | null;
+  title: string;
+  body: string;
+  severity: Severity;
+}): Promise<Alert> => {
+  const database = await getDatabase();
+  const id = uuidv4();
+  const now = new Date().toISOString();
+
+  await database.runAsync(
+    `INSERT INTO alerts
+     (id, instance_id, result_id, project_id, title, body, severity, acknowledged, sync_status, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      params.instanceId,
+      params.resultId ?? null,
+      params.projectId ?? null,
+      params.title,
+      params.body,
+      params.severity,
+      0,
+      'PENDING',
+      now,
+    ]
+  );
+
+  return {
+    id,
+    instance_id: params.instanceId,
+    result_id: params.resultId ?? null,
+    project_id: params.projectId ?? null,
+    title: params.title,
+    body: params.body,
+    severity: params.severity,
+    acknowledged: 0,
+    sync_status: 'PENDING',
+    created_at: now,
+  };
+};
+
+export const getAlerts = async (): Promise<Alert[]> => {
+  const database = await getDatabase();
+  const rows = await database.getAllAsync<Alert>(
+    'SELECT * FROM alerts ORDER BY created_at DESC'
+  );
+  return rows || [];
+};
+
+export const getUnacknowledgedAlertCount = async (): Promise<number> => {
+  const database = await getDatabase();
+  const row = await database.getFirstAsync<{ count: number }>(
+    'SELECT COUNT(*) as count FROM alerts WHERE acknowledged = 0'
+  );
+  return row?.count ?? 0;
+};
+
+export const acknowledgeAlert = async (id: string): Promise<void> => {
+  const database = await getDatabase();
+  await database.runAsync(
+    'UPDATE alerts SET acknowledged = 1 WHERE id = ?',
+    [id]
+  );
 };

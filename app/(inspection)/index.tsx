@@ -18,7 +18,15 @@ import SignatureScreen, {
 import { useChecklist } from '@/hooks/useChecklist';
 import { useNotification } from '@/components/Notification';
 import { capturePhoto, pickPhoto, PhotoResult } from '@/services/photos';
-import { ItemStatus } from '@/types/database';
+import { ItemStatus, Severity } from '@/types/database';
+import * as db from '@/database/db';
+import { pushLocalNotification } from '@/services/notifications';
+
+const SEVERITY_OPTIONS: { value: Severity; label: string }[] = [
+  { value: 'LOW', label: 'Low' },
+  { value: 'MEDIUM', label: 'Medium' },
+  { value: 'HIGH', label: 'High' },
+];
 
 export default function InspectionScreen() {
   const insets = useSafeAreaInsets();
@@ -69,6 +77,34 @@ export default function InspectionScreen() {
 
   const handleStatusChange = (itemId: string, status: ItemStatus) => {
     updateItemStatus(itemId, status);
+  };
+
+  const handleSeverityChange = async (itemId: string, severity: Severity) => {
+    await updateItem(itemId, { severity });
+
+    // A HIGH-severity failure is a "serious event": record a management alert
+    // and fire a local notification so management is informed immediately.
+    if (severity === 'HIGH' && instance) {
+      const item = items.find((i) => i.id === itemId);
+      const title = 'High-severity issue reported';
+      const body = item
+        ? `${item.description_text} flagged HIGH on this inspection.`
+        : 'A HIGH-severity issue was flagged on an inspection.';
+      try {
+        await db.createAlert({
+          instanceId: instance.id,
+          resultId: getItemResult(itemId)?.id ?? null,
+          projectId: instance.project_id,
+          title,
+          body,
+          severity: 'HIGH',
+        });
+        await pushLocalNotification(title, body, { instanceId: instance.id });
+        notify({ type: 'info', message: 'Management notified of high-severity issue' });
+      } catch (err) {
+        console.warn('Failed to raise high-severity alert', err);
+      }
+    }
   };
 
   const persistComment = (itemId: string) => {
@@ -318,6 +354,48 @@ export default function InspectionScreen() {
                   </Text>
                 </TouchableOpacity>
               </View>
+
+              {/* Severity (only when the item is marked FAIL) */}
+              {result?.status === 'FAIL' && (
+                <View className="mb-4">
+                  <Text className="text-xs font-bold text-construction-dark mb-2">
+                    Severity
+                  </Text>
+                  <View className="flex-row gap-2">
+                    {SEVERITY_OPTIONS.map((opt) => {
+                      const selected = result?.severity === opt.value;
+                      const isHigh = opt.value === 'HIGH';
+                      return (
+                        <TouchableOpacity
+                          key={opt.value}
+                          disabled={isCompleted}
+                          onPress={() => handleSeverityChange(item.id, opt.value)}
+                          className={`flex-1 py-2 px-3 rounded-lg border-2 items-center ${
+                            selected
+                              ? isHigh
+                                ? 'bg-red-600 border-red-700'
+                                : 'bg-construction-orange border-construction-orange'
+                              : 'bg-white border-gray-300'
+                          }`}
+                        >
+                          <Text
+                            className={`text-xs font-bold ${
+                              selected ? 'text-white' : 'text-construction-dark'
+                            }`}
+                          >
+                            {opt.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  {result?.severity === 'HIGH' && (
+                    <Text className="text-xs text-red-600 mt-2 font-semibold">
+                      ⚠ Serious event — management has been notified
+                    </Text>
+                  )}
+                </View>
+              )}
 
               {/* Comments & Photo (only after a status is chosen) */}
               {result && (

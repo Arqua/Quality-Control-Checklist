@@ -21,6 +21,8 @@
     "expo-font": "~56.0.7",
     "expo-image-picker": "~56.0.18",
     "expo-linking": "~56.0.14",
+    "expo-notifications": "~56.0.18",
+    "expo-print": "~56.0.4",
     "expo-router": "~56.2.11",
     "expo-splash-screen": "~56.0.10",
     "expo-sqlite": "~56.0.5",
@@ -38,9 +40,13 @@
     "tailwindcss": "^3.4.0",
     "uuid": "^9.0.0",
     "axios": "^1.7.0",
-    "@react-native-async-storage/async-storage": "^1.23.1",
-    "expo-print": "~56.0.4",
+    "@react-native-async-storage/async-storage": "2.2.0",
     "expo-sharing": "~56.0.5"
+  },
+  "expo": {
+    "install": {
+      "exclude": ["typescript"]
+    }
   },
   "devDependencies": {
     "@react-native-community/eslint-config": "^3.2.0",
