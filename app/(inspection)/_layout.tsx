@@ -18,6 +18,12 @@ export default function InspectionLayout() {
           title: 'Inspection Checklist',
         }}
       />
+      <Stack.Screen
+        name="punch-list"
+        options={{
+          title: 'Punch List',
+        }}
+      />
     </Stack>
   );
 }
