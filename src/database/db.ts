@@ -149,6 +149,52 @@ const initializeDatabase = async (database: SQLite.SQLiteDatabase) => {
       );
     `);
 
+    // Safety tips database
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS safety_tips (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        content TEXT NOT NULL,
+        category TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        last_shown TEXT
+      );
+    `);
+
+    // Incident reports
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS incident_reports (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        category TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        description TEXT NOT NULL,
+        location TEXT,
+        date_time TEXT NOT NULL,
+        involved_parties TEXT,
+        status TEXT NOT NULL DEFAULT 'OPEN',
+        reporter_name TEXT NOT NULL,
+        corrective_actions TEXT,
+        sync_status TEXT NOT NULL DEFAULT 'PENDING',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (project_id) REFERENCES projects(id)
+      );
+    `);
+
+    // Incident attachments
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS incident_attachments (
+        id TEXT PRIMARY KEY,
+        incident_id TEXT NOT NULL,
+        photo_local_uri TEXT NOT NULL,
+        photo_remote_url TEXT,
+        photo_sync_status TEXT DEFAULT 'PENDING',
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (incident_id) REFERENCES incident_reports(id) ON DELETE CASCADE
+      );
+    `);
+
     // Apply migrations for databases created by older app versions.
     await runMigrations(database);
 
@@ -239,6 +285,59 @@ const seedDatabase = async (database: SQLite.SQLiteDatabase) => {
         `INSERT INTO template_items (id, template_id, description_text, sort_order)
          VALUES (?, ?, ?, ?)`,
         [itemId, templateId, item.description, item.order]
+      );
+    }
+
+    // Seed initial safety tips
+    const safetyTips = [
+      {
+        title: 'Always Wear Appropriate PPE',
+        content: 'Personal protective equipment (PPE) is your first line of defense. Always wear the appropriate PPE for your work environment, including hard hats, safety glasses, gloves, and steel-toed boots. Ensure PPE fits properly and is in good condition.',
+        category: 'PPE' as const,
+      },
+      {
+        title: 'Be Aware of Your Surroundings',
+        content: 'Maintain constant awareness of your work environment and potential hazards. Look for unexpected obstacles, unstable surfaces, or weather changes. Keep your phone secured and avoid distractions while working in hazardous areas.',
+        category: 'HAZARD_AWARENESS' as const,
+      },
+      {
+        title: 'Report Hazards Immediately',
+        content: 'If you notice a hazard or unsafe condition, report it immediately to your supervisor. Do not attempt to fix hazardous situations yourself unless you are trained and authorized to do so. Documentation helps prevent future incidents.',
+        category: 'HAZARD_AWARENESS' as const,
+      },
+      {
+        title: 'Proper Ladder Safety',
+        content: 'Always use a ladder on stable, level ground. Maintain three points of contact when climbing. Never lean too far to either side, and keep your hips within the ladder rails. Never use a damaged ladder.',
+        category: 'BEST_PRACTICES' as const,
+      },
+      {
+        title: 'Proper Lifting Techniques',
+        content: 'Lift with your legs, not your back. Bend at the knees, keep the load close to your body, and avoid twisting. Ask for help with heavy items. Break down large loads into smaller, manageable quantities.',
+        category: 'BEST_PRACTICES' as const,
+      },
+      {
+        title: 'Hand Tool Safety',
+        content: 'Use the right tool for the job. Inspect tools before use for damage. Keep tools in good condition with secure handles and sharp blades. Store tools properly in designated areas to prevent accidents.',
+        category: 'BEST_PRACTICES' as const,
+      },
+      {
+        title: 'Know Your Emergency Procedures',
+        content: 'Familiarize yourself with emergency exits, assembly points, and emergency contact numbers. Know the location of first aid kits, fire extinguishers, and eyewash stations. Participate in safety drills and stay alert.',
+        category: 'EMERGENCY_RESPONSE' as const,
+      },
+      {
+        title: 'First Aid Response',
+        content: 'If someone is injured, keep them calm and call for medical help immediately. Apply basic first aid if trained. Do not move seriously injured persons unless there is immediate danger. Ensure the area is safe before providing assistance.',
+        category: 'EMERGENCY_RESPONSE' as const,
+      },
+    ];
+
+    for (const tip of safetyTips) {
+      const tipId = uuidv4();
+      await database.runAsync(
+        `INSERT INTO safety_tips (id, title, content, category, created_at)
+         VALUES (?, ?, ?, ?, ?)`,
+        [tipId, tip.title, tip.content, tip.category, new Date().toISOString()]
       );
     }
   } catch (error) {
@@ -821,6 +920,156 @@ export const getRecentActivities = async (limit: number = 20): Promise<Activity[
   const rows = await database.getAllAsync<Activity>(
     'SELECT * FROM activities ORDER BY created_at DESC LIMIT ?',
     [limit]
+  );
+  return rows || [];
+};
+
+// SAFETY TIPS — Workplace safety education
+export const getDailyTip = async (): Promise<SafetyTip | null> => {
+  const database = await getDatabase();
+  const row = await database.getFirstAsync<SafetyTip>(
+    `SELECT * FROM safety_tips
+     WHERE last_shown IS NULL OR date(last_shown) != date('now')
+     ORDER BY RANDOM() LIMIT 1`
+  );
+
+  if (row) {
+    await database.runAsync(
+      'UPDATE safety_tips SET last_shown = ? WHERE id = ?',
+      [new Date().toISOString(), row.id]
+    );
+  }
+
+  return row || null;
+};
+
+export const getAllTips = async (): Promise<SafetyTip[]> => {
+  const database = await getDatabase();
+  const rows = await database.getAllAsync<SafetyTip>(
+    'SELECT * FROM safety_tips ORDER BY created_at DESC'
+  );
+  return rows || [];
+};
+
+export const createSafetyTip = async (params: {
+  title: string;
+  content: string;
+  category: SafetyTip['category'];
+}): Promise<SafetyTip> => {
+  const database = await getDatabase();
+  const id = uuidv4();
+  const now = new Date().toISOString();
+
+  await database.runAsync(
+    `INSERT INTO safety_tips (id, title, content, category, created_at)
+     VALUES (?, ?, ?, ?, ?)`,
+    [id, params.title, params.content, params.category, now]
+  );
+
+  return {
+    id,
+    title: params.title,
+    content: params.content,
+    category: params.category,
+    created_at: now,
+  };
+};
+
+// INCIDENT REPORTS — Workplace incident tracking
+export const createIncidentReport = async (params: {
+  projectId: string;
+  category: IncidentCategory;
+  severity: Severity;
+  description: string;
+  location?: string | null;
+  dateTime: string;
+  involvedParties?: string | null;
+  reporterName: string;
+  correctiveActions?: string | null;
+}): Promise<IncidentReport> => {
+  const database = await getDatabase();
+  const id = uuidv4();
+  const now = new Date().toISOString();
+
+  await database.runAsync(
+    `INSERT INTO incident_reports
+     (id, project_id, category, severity, description, location, date_time, involved_parties, status, reporter_name, corrective_actions, sync_status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      params.projectId,
+      params.category,
+      params.severity,
+      params.description,
+      params.location ?? null,
+      params.dateTime,
+      params.involvedParties ?? null,
+      'OPEN',
+      params.reporterName,
+      params.correctiveActions ?? null,
+      'PENDING',
+      now,
+      now,
+    ]
+  );
+
+  return {
+    id,
+    project_id: params.projectId,
+    category: params.category,
+    severity: params.severity,
+    description: params.description,
+    location: params.location ?? null,
+    date_time: params.dateTime,
+    involved_parties: params.involvedParties ?? null,
+    status: 'OPEN',
+    reporter_name: params.reporterName,
+    corrective_actions: params.correctiveActions ?? null,
+    sync_status: 'PENDING',
+    created_at: now,
+    updated_at: now,
+  };
+};
+
+export const getIncidentReportsByProject = async (
+  projectId: string
+): Promise<IncidentReport[]> => {
+  const database = await getDatabase();
+  const rows = await database.getAllAsync<IncidentReport>(
+    'SELECT * FROM incident_reports WHERE project_id = ? ORDER BY date_time DESC',
+    [projectId]
+  );
+  return rows || [];
+};
+
+export const getIncidentReportById = async (id: string): Promise<IncidentReport | null> => {
+  const database = await getDatabase();
+  return (
+    (await database.getFirstAsync<IncidentReport>(
+      'SELECT * FROM incident_reports WHERE id = ?',
+      [id]
+    )) || null
+  );
+};
+
+export const updateIncidentReportStatus = async (
+  id: string,
+  status: IncidentReport['status']
+): Promise<void> => {
+  const database = await getDatabase();
+  const now = new Date().toISOString();
+  await database.runAsync(
+    'UPDATE incident_reports SET status = ?, sync_status = ?, updated_at = ? WHERE id = ?',
+    [status, 'PENDING', now, id]
+  );
+};
+
+export const getHighSeverityIncidents = async (): Promise<IncidentReport[]> => {
+  const database = await getDatabase();
+  const rows = await database.getAllAsync<IncidentReport>(
+    `SELECT * FROM incident_reports
+     WHERE severity = 'HIGH' AND status = 'OPEN'
+     ORDER BY date_time DESC`
   );
   return rows || [];
 };

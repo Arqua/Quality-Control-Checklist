@@ -114,6 +114,61 @@ export interface Activity {
   created_at: string;
 }
 
+/**
+ * Safety tip for daily safety education.
+ */
+export interface SafetyTip {
+  id: string;
+  title: string;
+  content: string;
+  category: 'PPE' | 'HAZARD_AWARENESS' | 'BEST_PRACTICES' | 'EMERGENCY_RESPONSE';
+  created_at: string;
+  last_shown?: string | null;
+}
+
+/**
+ * Workplace incident report categories.
+ */
+export type IncidentCategory =
+  | 'INJURY_ILLNESS'
+  | 'MOTOR_VEHICLE'
+  | 'PROPERTY_DAMAGE'
+  | 'ENVIRONMENTAL_SPILL'
+  | 'LINE_STRIKE'
+  | 'NEAR_MISS';
+
+/**
+ * Workplace incident report with severity classification for management alerts.
+ */
+export interface IncidentReport {
+  id: string;
+  project_id: string;
+  category: IncidentCategory;
+  severity: Severity;
+  description: string;
+  location?: string | null;
+  date_time: string;
+  involved_parties?: string | null;
+  status: 'OPEN' | 'UNDER_REVIEW' | 'RESOLVED';
+  reporter_name: string;
+  corrective_actions?: string | null;
+  sync_status: SyncStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Incident photo attachment.
+ */
+export interface IncidentAttachment {
+  id: string;
+  incident_id: string;
+  photo_local_uri: string;
+  photo_remote_url?: string | null;
+  photo_sync_status: PhotoSyncStatus;
+  created_at: string;
+}
+
 export interface SyncPayload {
   results: ChecklistResult[];
   punchItems: PunchItem[];

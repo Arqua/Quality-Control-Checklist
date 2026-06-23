@@ -266,6 +266,56 @@ export default function HomeScreen() {
           </TouchableOpacity>
         )}
 
+        {/* Safety Features Section */}
+        <View className="mb-4">
+          <Text className="text-construction-dark font-bold text-lg mb-3">Safety</Text>
+          <View className="flex-row gap-3">
+            <TouchableOpacity
+              onPress={() =>
+                router.push({
+                  pathname: '/(safety)/report-incident',
+                  params: { projectId: selectedProject?.id || '' },
+                })
+              }
+              disabled={!selectedProject}
+              className="flex-1 bg-red-50 rounded-lg p-4 border border-red-200 items-center justify-center"
+            >
+              <MaterialIcons name="emergency" size={28} color="#DC2626" />
+              <Text className="text-red-700 font-bold text-xs mt-2 text-center">
+                Report Incident
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => router.push('/(safety)/safety-tips')}
+              className="flex-1 bg-blue-50 rounded-lg p-4 border border-blue-200 items-center justify-center"
+            >
+              <MaterialIcons name="lightbulb" size={28} color="#3B82F6" />
+              <Text className="text-blue-700 font-bold text-xs mt-2 text-center">
+                Safety Tips
+              </Text>
+            </TouchableOpacity>
+
+            {isManager && (
+              <TouchableOpacity
+                onPress={() =>
+                  router.push({
+                    pathname: '/(safety)/incidents-list',
+                    params: { projectId: selectedProject?.id || '' },
+                  })
+                }
+                disabled={!selectedProject}
+                className="flex-1 bg-orange-50 rounded-lg p-4 border border-orange-200 items-center justify-center"
+              >
+                <MaterialIcons name="assignment-late" size={28} color="#EA580C" />
+                <Text className="text-orange-700 font-bold text-xs mt-2 text-center">
+                  View Incidents
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
         {/* Search and Filter */}
         <View className="mb-4">
           <TextInput
