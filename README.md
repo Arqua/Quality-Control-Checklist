@@ -290,3 +290,24 @@ eas build --platform android --profile production
 - [ ] Advanced filtering and search
 - [ ] Punch list management screen
 - [ ] Team collaboration features
+
+## ✅ Next Steps
+
+The fastest path from field-test build to a production-ready deployment:
+
+1. **Stand up the backend** — Deploy `backend/` against a managed PostgreSQL
+   instance, run `npm run migrate`, and set `EXPO_PUBLIC_API_URL` in the EAS
+   build profile so devices sync to it.
+2. **Replace demo auth** — Swap the static accounts in `src/auth/authContext.tsx`
+   for backend-validated login (JWT), and store the token via the existing
+   `getAuthToken()` hook in `src/config/env.ts`.
+3. **Wire photo uploads** — Connect `src/services/photos.ts` to the backend's
+   `/api/photos` endpoint and an object store (S3/GCS) so the
+   `photo_sync_status` lifecycle completes (`PENDING → UPLOADED`).
+4. **Configure push** — Register an Expo push project and set `EXPO_ACCESS_TOKEN`
+   on the backend so cross-device management alerts deliver reliably.
+5. **Add automated checks to CI** — Run `npm run type-check`, `npm run lint`,
+   and `npm test` (plus the backend tests) on every PR.
+6. **Cut a release build** — Follow [BUILD-INSTRUCTIONS.md](./BUILD-INSTRUCTIONS.md)
+   to produce signed iOS/Android artifacts, then validate sync and alerts on
+   real devices before distribution.
