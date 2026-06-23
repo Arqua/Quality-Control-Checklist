@@ -17,14 +17,26 @@ import SignatureScreen, {
 } from 'react-native-signature-canvas';
 import { useChecklist } from '@/hooks/useChecklist';
 import { useNotification } from '@/components/Notification';
+import { useAuth } from '@/auth/authContext';
+import { useRouter } from 'expo-router';
 import { capturePhoto, pickPhoto, PhotoResult } from '@/services/photos';
-import { ItemStatus } from '@/types/database';
+import { ItemStatus, Severity } from '@/types/database';
+import * as db from '@/database/db';
+import { pushLocalNotification } from '@/services/notifications';
+
+const SEVERITY_OPTIONS: { value: Severity; label: string }[] = [
+  { value: 'LOW', label: 'Low' },
+  { value: 'MEDIUM', label: 'Medium' },
+  { value: 'HIGH', label: 'High' },
+];
 
 export default function InspectionScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const params = useLocalSearchParams();
   const instanceId = params.instanceId as string;
   const { notify } = useNotification();
+  const { token } = useAuth();
 
   const {
     instance,
@@ -37,7 +49,7 @@ export default function InspectionScreen() {
     updateItemStatus,
     completeChecklist,
     clearError,
-  } = useChecklist(instanceId);
+  } = useChecklist(instanceId, token ?? undefined);
 
   const [showSignOff, setShowSignOff] = useState(false);
   const [inspectorSignature, setInspectorSignature] = useState<string | null>(null);
@@ -69,6 +81,44 @@ export default function InspectionScreen() {
 
   const handleStatusChange = (itemId: string, status: ItemStatus) => {
     updateItemStatus(itemId, status);
+  };
+
+  const handleSeverityChange = async (itemId: string, severity: Severity) => {
+    await updateItem(itemId, { severity });
+
+    // A HIGH-severity failure is a "serious event": record a management alert
+    // and fire a local notification so management is informed immediately.
+    if (severity === 'HIGH' && instance) {
+      const item = items.find((i) => i.id === itemId);
+      const title = 'High-severity issue reported';
+      const body = item
+        ? `${item.description_text} flagged HIGH on this inspection.`
+        : 'A HIGH-severity issue was flagged on an inspection.';
+      try {
+        await db.createAlert({
+          instanceId: instance.id,
+          resultId: getItemResult(itemId)?.id ?? null,
+          projectId: instance.project_id,
+          title,
+          body,
+          severity: 'HIGH',
+        });
+        await db.createActivity({
+          projectId: instance.project_id,
+          instanceId: instance.id,
+          type: 'SEVERITY_FLAGGED',
+          actorName: instance.inspector_name,
+          description: item
+            ? `${item.description_text} flagged HIGH`
+            : 'A HIGH-severity issue was flagged',
+          severity: 'HIGH',
+        });
+        await pushLocalNotification(title, body, { instanceId: instance.id });
+        notify({ type: 'info', message: 'Management notified of high-severity issue' });
+      } catch (err) {
+        console.warn('Failed to raise high-severity alert', err);
+      }
+    }
   };
 
   const persistComment = (itemId: string) => {
@@ -135,6 +185,16 @@ export default function InspectionScreen() {
     setSubmitting(true);
     try {
       await completeChecklist(inspectorSignature, pmSignature ?? undefined);
+      if (instance) {
+        const stats = getProgressStats();
+        await db.createActivity({
+          projectId: instance.project_id,
+          instanceId: instance.id,
+          type: 'CHECKLIST_COMPLETED',
+          actorName: instance.inspector_name,
+          description: `Completed inspection: ${stats.passed} passed, ${stats.failed} failed, ${stats.total - stats.passed - stats.failed} N/A`,
+        });
+      }
       setShowSignOff(false);
       notify({ type: 'success', message: 'Checklist signed off and completed' });
     } catch {
@@ -193,6 +253,14 @@ export default function InspectionScreen() {
         <Text className="text-construction-light text-xs">
           {stats.completed} of {stats.total} completed ({Math.round(progressPercent)}%)
         </Text>
+
+        <TouchableOpacity
+          onPress={() => router.push({ pathname: '/(inspection)/punch-list', params: { instanceId } })}
+          className="mt-3 flex-row items-center justify-center bg-construction-accent/20 rounded-lg py-2"
+        >
+          <MaterialIcons name="assignment" size={16} color="#FFB627" />
+          <Text className="text-construction-accent text-xs font-semibold ml-1">Punch List</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Checklist Items */}
@@ -318,6 +386,48 @@ export default function InspectionScreen() {
                   </Text>
                 </TouchableOpacity>
               </View>
+
+              {/* Severity (only when the item is marked FAIL) */}
+              {result?.status === 'FAIL' && (
+                <View className="mb-4">
+                  <Text className="text-xs font-bold text-construction-dark mb-2">
+                    Severity
+                  </Text>
+                  <View className="flex-row gap-2">
+                    {SEVERITY_OPTIONS.map((opt) => {
+                      const selected = result?.severity === opt.value;
+                      const isHigh = opt.value === 'HIGH';
+                      return (
+                        <TouchableOpacity
+                          key={opt.value}
+                          disabled={isCompleted}
+                          onPress={() => handleSeverityChange(item.id, opt.value)}
+                          className={`flex-1 py-2 px-3 rounded-lg border-2 items-center ${
+                            selected
+                              ? isHigh
+                                ? 'bg-red-600 border-red-700'
+                                : 'bg-construction-orange border-construction-orange'
+                              : 'bg-white border-gray-300'
+                          }`}
+                        >
+                          <Text
+                            className={`text-xs font-bold ${
+                              selected ? 'text-white' : 'text-construction-dark'
+                            }`}
+                          >
+                            {opt.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  {result?.severity === 'HIGH' && (
+                    <Text className="text-xs text-red-600 mt-2 font-semibold">
+                      ⚠ Serious event — management has been notified
+                    </Text>
+                  )}
+                </View>
+              )}
 
               {/* Comments & Photo (only after a status is chosen) */}
               {result && (

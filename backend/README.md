@@ -97,7 +97,62 @@ Receives offline-first data from mobile client and syncs to PostgreSQL.
 }
 ```
 
+> Results may include an optional `severity` field (`LOW|MEDIUM|HIGH`). It is
+> persisted for `FAIL` results and ignored otherwise.
+
+#### Management Alerts (cross-device)
+
+Serious (HIGH-severity) events are raised on the device that records them and
+fanned out to other managers via Expo push. The flow:
+
+1. Each manager's device registers its Expo push token once via
+   **POST** `/api/devices`.
+2. When an inspection records a HIGH-severity failure, the device pushes the
+   alert via **POST** `/api/alerts`. The server persists it and sends an Expo
+   push to every *other* manager's registered device (respecting project scope).
+3. Managers' inboxes pull the full list via **GET** `/api/alerts` and clear
+   items with **POST** `/api/alerts/:id/acknowledge`.
+
+**POST** `/api/devices` — register/refresh this device for push.
+```json
+{ "expoPushToken": "ExponentPushToken[...]", "role": "manager", "projectIds": ["uuid"] }
+```
+`role` and `projectIds` default to the authenticated user's JWT claims when omitted.
+Upserts on the token, so re-registering is safe.
+
+**POST** `/api/alerts` — push raised alerts up (idempotent on alert `id`).
+```json
+{
+  "alerts": [
+    {
+      "id": "uuid",
+      "instance_id": "uuid",
+      "result_id": "uuid|null",
+      "project_id": "uuid|null",
+      "title": "HIGH severity: Rebar spacing",
+      "body": "Rebar spacing off on Downtown Office Tower",
+      "severity": "HIGH",
+      "created_at": "2026-06-22T..."
+    }
+  ]
+}
+```
+Response: `{ "success": true, "synced": { "alertIds": [...] }, "pushed": <count> }`.
+Only newly-stored HIGH-severity alerts trigger a push; re-syncs do not re-notify.
+
+**GET** `/api/alerts?since=<ISO>` — manager-visible alerts, newest first.
+Inspectors receive an empty list. Project-scoped managers only see alerts for
+their projects (plus project-less alerts).
+
+**POST** `/api/alerts/:id/acknowledge` — mark an alert acknowledged (managers only).
+
+Set `EXPO_ACCESS_TOKEN` only if your Expo project enforces push security;
+otherwise the server sends to Expo's push service without it.
+
 ### Database Schema (PostgreSQL)
+
+The complete, idempotent schema lives in [`schema.sql`](./schema.sql) and is
+applied with `npm run migrate`. The summary below is illustrative.
 
 Mirrors mobile SQLite schema with additions for multi-user support and audit trails:
 

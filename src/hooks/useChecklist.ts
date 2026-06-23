@@ -4,6 +4,7 @@ import {
   ChecklistInstance,
   ChecklistResult,
   TemplateItem,
+  Severity,
 } from '../types/database';
 import { runSync } from '../services/sync';
 
@@ -30,11 +31,12 @@ const SYNC_INTERVAL_MS = 30000;
 /** Patch passed to {@link useChecklist.updateItem}. */
 export interface ItemPatch {
   status?: ChecklistResult['status'];
+  severity?: Severity | null;
   comments?: string | null;
   photoUri?: string | null;
 }
 
-export const useChecklist = (instanceId: string | null) => {
+export const useChecklist = (instanceId: string | null, authToken?: string) => {
   const [state, setState] = useState<ChecklistState>(INITIAL_STATE);
   const syncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Guards against overlapping sync passes without forcing re-renders.
@@ -106,12 +108,12 @@ export const useChecklist = (instanceId: string | null) => {
     setState((prev) => ({ ...prev, syncing: true }));
 
     try {
-      await runSync();
+      await runSync(authToken);
     } finally {
       syncingRef.current = false;
       setState((prev) => ({ ...prev, syncing: false }));
     }
-  }, []);
+  }, [authToken]);
 
   /**
    * Creates or patches the result for a checklist item. Omitted patch fields
@@ -129,6 +131,7 @@ export const useChecklist = (instanceId: string | null) => {
         if (existing) {
           await db.updateChecklistResult(existing.id, {
             status: patch.status,
+            severity: patch.severity,
             comments: patch.comments,
             photoUri: patch.photoUri,
           });
@@ -143,7 +146,8 @@ export const useChecklist = (instanceId: string | null) => {
             templateItemId,
             patch.status,
             patch.comments ?? undefined,
-            patch.photoUri ?? undefined
+            patch.photoUri ?? undefined,
+            patch.severity ?? undefined
           );
           resultId = created.id;
         }

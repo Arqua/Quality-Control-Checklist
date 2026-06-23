@@ -24,6 +24,42 @@ export default function HomeLayout() {
           },
         }}
       />
+      <Stack.Screen
+        name="alerts"
+        options={{
+          title: 'Management Alerts',
+          headerShown: true,
+          headerTintColor: '#004E89',
+          headerTitleStyle: {
+            fontWeight: '600',
+            fontSize: 18,
+          },
+        }}
+      />
+      <Stack.Screen
+        name="activity-log"
+        options={{
+          title: 'Team Activity',
+          headerShown: true,
+          headerTintColor: '#004E89',
+          headerTitleStyle: {
+            fontWeight: '600',
+            fontSize: 18,
+          },
+        }}
+      />
+      <Stack.Screen
+        name="settings"
+        options={{
+          title: 'Settings',
+          headerShown: true,
+          headerTintColor: '#004E89',
+          headerTitleStyle: {
+            fontWeight: '600',
+            fontSize: 18,
+          },
+        }}
+      />
     </Stack>
   );
 }

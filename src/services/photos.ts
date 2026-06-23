@@ -3,6 +3,8 @@ import * as ImagePicker from 'expo-image-picker';
 // `/legacy` entry point; the default export is now the new File/Directory API.
 import * as FileSystem from 'expo-file-system/legacy';
 import { v4 as uuidv4 } from 'uuid';
+import axios from 'axios';
+import { API_BASE_URL } from '../config/env';
 
 const PHOTO_DIR = `${FileSystem.documentDirectory}qc-photos/`;
 
@@ -83,5 +85,45 @@ export async function pickPhoto(): Promise<PhotoResult> {
       status: 'error',
       message: err instanceof Error ? err.message : 'Gallery failed',
     };
+  }
+}
+
+/**
+ * Uploads a photo to the backend cloud storage and returns the remote URL.
+ * Returns null if backend URL is not configured (offline mode).
+ */
+export async function uploadPhoto(
+  localUri: string,
+  resultId: string,
+  token?: string
+): Promise<string | null> {
+  if (!API_BASE_URL) {
+    console.warn('[photos] Backend URL not configured; photo upload skipped');
+    return null;
+  }
+
+  try {
+    const form = new FormData();
+    form.append('photo', {
+      uri: localUri,
+      name: `${resultId}.jpg`,
+      type: 'image/jpeg',
+    } as unknown as Blob);
+    form.append('resultId', resultId);
+
+    const headers: Record<string, string> = { 'Content-Type': 'multipart/form-data' };
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
+    const res = await axios.post(`${API_BASE_URL}/api/photos`, form, {
+      headers,
+      timeout: 30000,
+    });
+
+    return res.data?.photoUrl ?? null;
+  } catch (err) {
+    console.warn('[photos] Upload failed:', err instanceof Error ? err.message : err);
+    return null;
   }
 }

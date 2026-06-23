@@ -20,6 +20,7 @@ export default function NewChecklistScreen() {
   const { notify } = useNotification();
   const params = useLocalSearchParams();
   const projectId = params.projectId as string;
+  const templateId = params.templateId as string | undefined;
 
   const [templates, setTemplates] = useState<Template[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
@@ -36,6 +37,11 @@ export default function NewChecklistScreen() {
       setLoading(true);
       const templatesList = await db.getAllTemplates();
       setTemplates(templatesList);
+      // Pre-select the template the user tapped "Start Inspection" on.
+      if (templateId) {
+        const preselected = templatesList.find((t) => t.id === templateId);
+        if (preselected) setSelectedTemplate(preselected);
+      }
     } catch (error) {
       notify({ type: 'error', message: 'Failed to load templates' });
     } finally {

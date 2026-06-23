@@ -9,6 +9,7 @@
 export const ITEM_STATUSES = ['PASS', 'FAIL', 'NA'] as const;
 export const INSTANCE_STATUSES = ['DRAFT', 'COMPLETED'] as const;
 export const PUNCH_STATUSES = ['OPEN', 'CLOSED'] as const;
+export const SEVERITIES = ['LOW', 'MEDIUM', 'HIGH'] as const;
 
 export type ValidationError = { field: string; message: string };
 
@@ -49,6 +50,14 @@ function validateResult(r: any, i: number, errors: ValidationError[]) {
     errors.push({ field: `${p}.updated_at`, message: 'must be an ISO date' });
   if (r?.comments != null && typeof r.comments !== 'string')
     errors.push({ field: `${p}.comments`, message: 'must be a string' });
+  // Severity is optional and only meaningful for FAIL, but if present it must
+  // be one of the known levels (defends against arbitrary values reaching the
+  // CHECK-constrained column).
+  if (r?.severity != null && !SEVERITIES.includes(r.severity))
+    errors.push({
+      field: `${p}.severity`,
+      message: `must be one of ${SEVERITIES.join(', ')}`,
+    });
 }
 
 function validatePunchItem(pi: any, i: number, errors: ValidationError[]) {
@@ -135,4 +144,80 @@ export function collectInstanceIds(body: any): string[] {
     if (isUuid(pi?.checklist_instance_id)) ids.add(pi.checklist_instance_id);
   for (const inst of body?.instances ?? []) if (isUuid(inst?.id)) ids.add(inst.id);
   return [...ids];
+}
+
+function validateAlert(a: any, i: number, errors: ValidationError[]) {
+  const p = `alerts[${i}]`;
+  if (!isUuid(a?.id)) errors.push({ field: `${p}.id`, message: 'must be a UUID' });
+  if (!isUuid(a?.instance_id))
+    errors.push({ field: `${p}.instance_id`, message: 'must be a UUID' });
+  // result_id and project_id are nullable, but must be UUIDs when present.
+  if (a?.result_id != null && !isUuid(a.result_id))
+    errors.push({ field: `${p}.result_id`, message: 'must be a UUID or null' });
+  if (a?.project_id != null && !isUuid(a.project_id))
+    errors.push({ field: `${p}.project_id`, message: 'must be a UUID or null' });
+  if (!isNonEmptyString(a?.title))
+    errors.push({ field: `${p}.title`, message: 'is required' });
+  if (!isNonEmptyString(a?.body))
+    errors.push({ field: `${p}.body`, message: 'is required' });
+  if (!SEVERITIES.includes(a?.severity))
+    errors.push({
+      field: `${p}.severity`,
+      message: `must be one of ${SEVERITIES.join(', ')}`,
+    });
+  if (!isIsoDate(a?.created_at))
+    errors.push({ field: `${p}.created_at`, message: 'must be an ISO date' });
+}
+
+/**
+ * Validates a batch of management alerts pushed up from a device.
+ * Body shape: `{ alerts: Alert[] }`.
+ */
+export function validateAlertsPayload(body: any): ValidationResult {
+  const errors: ValidationError[] = [];
+
+  if (body == null || typeof body !== 'object') {
+    return { valid: false, errors: [{ field: 'body', message: 'must be an object' }] };
+  }
+
+  const { alerts } = body;
+  if (!Array.isArray(alerts)) {
+    return { valid: false, errors: [{ field: 'alerts', message: 'must be an array' }] };
+  }
+  if (alerts.length === 0) {
+    return { valid: false, errors: [{ field: 'alerts', message: 'must not be empty' }] };
+  }
+  if (alerts.length > MAX_RECORDS_PER_TYPE) {
+    return {
+      valid: false,
+      errors: [{ field: 'alerts', message: `exceeds maximum of ${MAX_RECORDS_PER_TYPE} records` }],
+    };
+  }
+
+  alerts.forEach((a, i) => validateAlert(a, i, errors));
+  return { valid: errors.length === 0, errors };
+}
+
+/**
+ * Validates a device push-token registration.
+ * Body shape: `{ expoPushToken: string, role?: string, projectIds?: string[] }`.
+ */
+export function validateDeviceRegistration(body: any): ValidationResult {
+  const errors: ValidationError[] = [];
+
+  if (body == null || typeof body !== 'object') {
+    return { valid: false, errors: [{ field: 'body', message: 'must be an object' }] };
+  }
+  if (!isNonEmptyString(body.expoPushToken))
+    errors.push({ field: 'expoPushToken', message: 'is required' });
+  if (body.role != null && typeof body.role !== 'string')
+    errors.push({ field: 'role', message: 'must be a string' });
+  if (body.projectIds != null) {
+    if (!Array.isArray(body.projectIds)) {
+      errors.push({ field: 'projectIds', message: 'must be an array' });
+    } else if (!body.projectIds.every(isUuid)) {
+      errors.push({ field: 'projectIds', message: 'must be an array of UUIDs' });
+    }
+  }
+  return { valid: errors.length === 0, errors };
 }

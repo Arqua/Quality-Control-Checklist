@@ -3,6 +3,12 @@ export type ChecklistStatus = 'DRAFT' | 'COMPLETED';
 export type SyncStatus = 'PENDING' | 'SYNCED';
 
 /**
+ * Severity classification for a failed inspection item. HIGH-severity failures
+ * are "serious events" that raise an {@link Alert} and notify management.
+ */
+export type Severity = 'LOW' | 'MEDIUM' | 'HIGH';
+
+/**
  * Tracks the lifecycle of a photo attachment as it moves from the device's
  * local filesystem up to remote object storage (e.g. an S3 bucket).
  * - NONE:     no photo attached to this result
@@ -50,6 +56,8 @@ export interface ChecklistResult {
   instance_id: string;
   template_item_id: string;
   status: ItemStatus;
+  /** Risk severity, set when an item is marked FAIL. Null otherwise. */
+  severity?: Severity | null;
   comments?: string | null;
   /** Local file:// URI of the captured/selected photo on the device. */
   photo_local_uri?: string | null;
@@ -69,6 +77,40 @@ export interface PunchItem {
   description: string;
   status: 'OPEN' | 'CLOSED';
   sync_status: SyncStatus;
+  created_at: string;
+}
+
+/**
+ * A management alert raised when a serious (HIGH-severity) event is registered
+ * during an inspection. Surfaced in the manager-only alerts inbox and, on the
+ * device that recorded it, via a local push notification. When a backend is
+ * configured, alerts sync up so other managers' devices can be push-notified.
+ */
+export interface Alert {
+  id: string;
+  instance_id: string;
+  result_id: string | null;
+  project_id: string | null;
+  title: string;
+  body: string;
+  severity: Severity;
+  /** 0 = unread/unacknowledged, 1 = acknowledged by a manager. */
+  acknowledged: number;
+  sync_status: SyncStatus;
+  created_at: string;
+}
+
+/**
+ * Activity log entry tracking team actions for collaboration and audit trail.
+ */
+export interface Activity {
+  id: string;
+  project_id: string;
+  instance_id?: string | null;
+  type: 'CHECKLIST_COMPLETED' | 'SEVERITY_FLAGGED' | 'PUNCH_ITEM_CLOSED' | 'NOTE_ADDED';
+  actor_name: string;
+  description: string;
+  severity?: Severity | null;
   created_at: string;
 }
 
