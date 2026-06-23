@@ -25,7 +25,7 @@ const UUID_RE =
 const isNonEmptyString = (v: unknown): v is string =>
   typeof v === 'string' && v.trim().length > 0;
 
-const isUuid = (v: unknown): v is string =>
+export const isUuid = (v: unknown): v is string =>
   typeof v === 'string' && UUID_RE.test(v);
 
 const isIsoDate = (v: unknown): boolean =>
