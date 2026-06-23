@@ -574,6 +574,17 @@ export const getPunchItemsByInstance = async (instanceId: string): Promise<Punch
   return result || [];
 };
 
+export const updatePunchItemStatus = async (
+  id: string,
+  status: 'OPEN' | 'CLOSED'
+): Promise<void> => {
+  const database = await getDatabase();
+  await database.runAsync(
+    'UPDATE punch_items SET status = ?, sync_status = ? WHERE id = ?',
+    [status, 'PENDING', id]
+  );
+};
+
 // SYNC FUNCTIONS
 export const getPendingSyncPayload = async (): Promise<SyncPayload> => {
   const database = await getDatabase();

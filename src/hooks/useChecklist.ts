@@ -36,7 +36,7 @@ export interface ItemPatch {
   photoUri?: string | null;
 }
 
-export const useChecklist = (instanceId: string | null) => {
+export const useChecklist = (instanceId: string | null, authToken?: string) => {
   const [state, setState] = useState<ChecklistState>(INITIAL_STATE);
   const syncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Guards against overlapping sync passes without forcing re-renders.
@@ -108,12 +108,12 @@ export const useChecklist = (instanceId: string | null) => {
     setState((prev) => ({ ...prev, syncing: true }));
 
     try {
-      await runSync();
+      await runSync(authToken);
     } finally {
       syncingRef.current = false;
       setState((prev) => ({ ...prev, syncing: false }));
     }
-  }, []);
+  }, [authToken]);
 
   /**
    * Creates or patches the result for a checklist item. Omitted patch fields
