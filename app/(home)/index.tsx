@@ -30,6 +30,8 @@ export default function HomeScreen() {
   const [unreadAlerts, setUnreadAlerts] = useState(0);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterBy, setFilterBy] = useState<'all' | 'active' | 'completed'>('all');
 
   // Modal state
   const [showProjectModal, setShowProjectModal] = useState(false);
@@ -250,9 +252,39 @@ export default function HomeScreen() {
           </TouchableOpacity>
         )}
 
+        {/* Search and Filter */}
+        <View className="mb-4">
+          <TextInput
+            placeholder="Search projects..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            className="bg-white border border-gray-300 rounded-lg px-4 py-3 mb-3 text-construction-dark"
+            placeholderTextColor="#9CA3AF"
+          />
+          <View className="flex-row gap-2">
+            {(['all', 'active', 'completed'] as const).map((filter) => (
+              <TouchableOpacity
+                key={filter}
+                onPress={() => setFilterBy(filter)}
+                className={`flex-1 rounded-lg py-2 px-3 ${
+                  filterBy === filter ? 'bg-construction-orange' : 'bg-white border border-gray-300'
+                }`}
+              >
+                <Text
+                  className={`text-center text-xs font-bold ${
+                    filterBy === filter ? 'text-white' : 'text-construction-dark'
+                  }`}
+                >
+                  {filter === 'all' ? 'All' : filter === 'active' ? 'Active' : 'Completed'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
         {/* Projects */}
         <Text className="text-construction-dark text-lg font-bold mb-3">
-          Projects ({projects.length})
+          Projects ({projects.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase())).length})
         </Text>
         {projects.length === 0 ? (
           <View className="bg-white rounded-lg p-6 items-center mb-6">
@@ -263,7 +295,9 @@ export default function HomeScreen() {
           </View>
         ) : (
           <View className="mb-6">
-            {projects.map((project) => (
+            {projects
+              .filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
+              .map((project) => (
               <TouchableOpacity
                 key={project.id}
                 onPress={() => selectProject(project)}
@@ -342,9 +376,25 @@ export default function HomeScreen() {
         {selectedProject && activeChecklists.length > 0 && (
           <View>
             <Text className="text-construction-dark text-lg font-bold mb-3">
-              Checklists ({activeChecklists.length})
+              Checklists ({activeChecklists
+                .filter(c => {
+                  const matchesFilter = filterBy === 'all' ||
+                    (filterBy === 'active' && c.status === 'DRAFT') ||
+                    (filterBy === 'completed' && c.status === 'COMPLETED');
+                  const matchesSearch = c.inspector_name.toLowerCase().includes(searchQuery.toLowerCase());
+                  return matchesFilter && matchesSearch;
+                })
+                .length})
             </Text>
-            {activeChecklists.map((checklist) => (
+            {activeChecklists
+              .filter(c => {
+                const matchesFilter = filterBy === 'all' ||
+                  (filterBy === 'active' && c.status === 'DRAFT') ||
+                  (filterBy === 'completed' && c.status === 'COMPLETED');
+                const matchesSearch = c.inspector_name.toLowerCase().includes(searchQuery.toLowerCase());
+                return matchesFilter && matchesSearch;
+              })
+              .map((checklist) => (
               <TouchableOpacity
                 key={checklist.id}
                 onPress={() => handleOpenChecklist(checklist)}
