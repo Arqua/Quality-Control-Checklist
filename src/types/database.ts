@@ -209,6 +209,30 @@ export interface RiggingForm {
   updated_at: string;
 }
 
+/**
+ * Equipment inspection for heavy machinery readiness assessment.
+ */
+export interface EquipmentInspection {
+  id: string;
+  project_id: string;
+  equipment_number: string;
+  equipment_type: string;
+  photo_uri?: string | null;
+  inspector_name: string;
+  inspection_status: 'PASS' | 'FAIL' | 'NEEDS_REPAIR';
+  engine_condition?: boolean | null;
+  hydraulic_systems?: boolean | null;
+  tires_tracks?: boolean | null;
+  lights_mirrors?: boolean | null;
+  safety_devices?: boolean | null;
+  fluid_levels?: boolean | null;
+  structural_integrity?: boolean | null;
+  operator_controls?: boolean | null;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface SyncPayload {
   results: ChecklistResult[];
   punchItems: PunchItem[];

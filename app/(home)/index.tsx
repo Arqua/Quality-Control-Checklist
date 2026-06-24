@@ -354,6 +354,44 @@ export default function HomeScreen() {
           </View>
         </View>
 
+        {/* Equipment Inspection Section */}
+        <View className="mb-4">
+          <Text className="text-construction-dark font-bold text-lg mb-3">Equipment Inspection</Text>
+          <View className="flex-row gap-3">
+            <TouchableOpacity
+              onPress={() =>
+                router.push({
+                  pathname: '/(equipment)/inspect-equipment',
+                  params: { projectId: selectedProject?.id || '' },
+                })
+              }
+              disabled={!selectedProject}
+              className="flex-1 bg-teal-50 rounded-lg p-4 border border-teal-200 items-center justify-center"
+            >
+              <MaterialIcons name="checklist-rtl" size={28} color="#0d9488" />
+              <Text className="text-teal-700 font-bold text-xs mt-2 text-center">
+                Inspect Equipment
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() =>
+                router.push({
+                  pathname: '/(equipment)/equipment-list',
+                  params: { projectId: selectedProject?.id || '' },
+                })
+              }
+              disabled={!selectedProject}
+              className="flex-1 bg-cyan-50 rounded-lg p-4 border border-cyan-200 items-center justify-center"
+            >
+              <MaterialIcons name="list" size={28} color="#0891b2" />
+              <Text className="text-cyan-700 font-bold text-xs mt-2 text-center">
+                View Inspections
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* Search and Filter */}
         <View className="mb-4">
           <TextInput

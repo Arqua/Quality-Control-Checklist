@@ -210,6 +210,32 @@ CREATE TABLE IF NOT EXISTS rigging_forms (
 CREATE INDEX IF NOT EXISTS idx_rigging_project ON rigging_forms (project_id);
 CREATE INDEX IF NOT EXISTS idx_rigging_status  ON rigging_forms (status);
 
+-- Equipment inspections -------------------------------------------------------
+CREATE TABLE IF NOT EXISTS equipment_inspections (
+  id                      UUID PRIMARY KEY,
+  project_id              UUID NOT NULL REFERENCES projects(id),
+  equipment_number        TEXT NOT NULL,
+  equipment_type          TEXT NOT NULL,
+  photo_uri               TEXT,
+  inspector_name          TEXT NOT NULL,
+  inspection_status       TEXT NOT NULL CHECK (inspection_status IN ('PASS', 'FAIL', 'NEEDS_REPAIR')),
+  engine_condition        BOOLEAN,
+  hydraulic_systems       BOOLEAN,
+  tires_tracks            BOOLEAN,
+  lights_mirrors          BOOLEAN,
+  safety_devices          BOOLEAN,
+  fluid_levels            BOOLEAN,
+  structural_integrity    BOOLEAN,
+  operator_controls       BOOLEAN,
+  notes                   TEXT,
+  created_at              TIMESTAMPTZ NOT NULL,
+  updated_at              TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_equipment_project ON equipment_inspections (project_id);
+CREATE INDEX IF NOT EXISTS idx_equipment_number ON equipment_inspections (equipment_number);
+CREATE INDEX IF NOT EXISTS idx_equipment_status  ON equipment_inspections (inspection_status);
+
 -- Sync audit log ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS sync_log (
   id               SERIAL PRIMARY KEY,

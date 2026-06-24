@@ -60,6 +60,14 @@ function RootLayoutContent() {
         name="(inspection)"
         options={{ presentation: 'card' }}
       />
+      <Stack.Screen
+        name="(safety)"
+        options={{ presentation: 'card' }}
+      />
+      <Stack.Screen
+        name="(equipment)"
+        options={{ presentation: 'card' }}
+      />
     </Stack>
   );
 }

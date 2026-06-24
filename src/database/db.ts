@@ -19,6 +19,7 @@ import {
   IncidentReport,
   HotWorkPermit,
   RiggingForm,
+  EquipmentInspection,
 } from '../types/database';
 
 const DB_NAME = 'qc-checklist.db';
@@ -236,6 +237,31 @@ const initializeDatabase = async (database: SQLite.SQLiteDatabase) => {
         area_secured INTEGER NOT NULL DEFAULT 0,
         personnel_briefed INTEGER NOT NULL DEFAULT 0,
         status TEXT NOT NULL DEFAULT 'PENDING',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (project_id) REFERENCES projects(id)
+      );
+    `);
+
+    // Equipment inspections
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS equipment_inspections (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        equipment_number TEXT NOT NULL,
+        equipment_type TEXT NOT NULL,
+        photo_uri TEXT,
+        inspector_name TEXT NOT NULL,
+        inspection_status TEXT NOT NULL,
+        engine_condition INTEGER,
+        hydraulic_systems INTEGER,
+        tires_tracks INTEGER,
+        lights_mirrors INTEGER,
+        safety_devices INTEGER,
+        fluid_levels INTEGER,
+        structural_integrity INTEGER,
+        operator_controls INTEGER,
+        notes TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         FOREIGN KEY (project_id) REFERENCES projects(id)
@@ -1350,4 +1376,140 @@ export const updateRiggingFormStatus = async (
     'UPDATE rigging_forms SET status = ?, updated_at = ? WHERE id = ?',
     [status, now, id]
   );
+};
+
+// EQUIPMENT INSPECTIONS — Heavy machinery readiness assessment
+export const createEquipmentInspection = async (params: {
+  projectId: string;
+  equipmentNumber: string;
+  equipmentType: string;
+  inspectorName: string;
+  photoUri?: string | null;
+  engineCondition?: boolean | null;
+  hydraulicSystems?: boolean | null;
+  tiresTracks?: boolean | null;
+  lightsMirrors?: boolean | null;
+  safetyDevices?: boolean | null;
+  fluidLevels?: boolean | null;
+  structuralIntegrity?: boolean | null;
+  operatorControls?: boolean | null;
+  notes?: string | null;
+}): Promise<EquipmentInspection> => {
+  const database = await getDatabase();
+  const id = uuidv4();
+  const now = new Date().toISOString();
+
+  const allPassed = [
+    params.engineCondition,
+    params.hydraulicSystems,
+    params.tiresTracks,
+    params.lightsMirrors,
+    params.safetyDevices,
+    params.fluidLevels,
+    params.structuralIntegrity,
+    params.operatorControls,
+  ].every(v => v === true);
+
+  const anyFailed = [
+    params.engineCondition,
+    params.hydraulicSystems,
+    params.tiresTracks,
+    params.lightsMirrors,
+    params.safetyDevices,
+    params.fluidLevels,
+    params.structuralIntegrity,
+    params.operatorControls,
+  ].some(v => v === false);
+
+  const inspectionStatus = allPassed ? 'PASS' : anyFailed ? 'FAIL' : 'NEEDS_REPAIR';
+
+  await database.runAsync(
+    `INSERT INTO equipment_inspections
+     (id, project_id, equipment_number, equipment_type, photo_uri, inspector_name, inspection_status, engine_condition, hydraulic_systems, tires_tracks, lights_mirrors, safety_devices, fluid_levels, structural_integrity, operator_controls, notes, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      params.projectId,
+      params.equipmentNumber,
+      params.equipmentType,
+      params.photoUri ?? null,
+      params.inspectorName,
+      inspectionStatus,
+      params.engineCondition ? 1 : null,
+      params.hydraulicSystems ? 1 : null,
+      params.tiresTracks ? 1 : null,
+      params.lightsMirrors ? 1 : null,
+      params.safetyDevices ? 1 : null,
+      params.fluidLevels ? 1 : null,
+      params.structuralIntegrity ? 1 : null,
+      params.operatorControls ? 1 : null,
+      params.notes ?? null,
+      now,
+      now,
+    ]
+  );
+
+  return {
+    id,
+    project_id: params.projectId,
+    equipment_number: params.equipmentNumber,
+    equipment_type: params.equipmentType,
+    photo_uri: params.photoUri ?? null,
+    inspector_name: params.inspectorName,
+    inspection_status: inspectionStatus,
+    engine_condition: params.engineCondition ?? null,
+    hydraulic_systems: params.hydraulicSystems ?? null,
+    tires_tracks: params.tiresTracks ?? null,
+    lights_mirrors: params.lightsMirrors ?? null,
+    safety_devices: params.safetyDevices ?? null,
+    fluid_levels: params.fluidLevels ?? null,
+    structural_integrity: params.structuralIntegrity ?? null,
+    operator_controls: params.operatorControls ?? null,
+    notes: params.notes ?? null,
+    created_at: now,
+    updated_at: now,
+  };
+};
+
+export const getEquipmentInspectionsByProject = async (
+  projectId: string
+): Promise<EquipmentInspection[]> => {
+  const database = await getDatabase();
+  const rows = await database.getAllAsync<any>(
+    'SELECT * FROM equipment_inspections WHERE project_id = ? ORDER BY created_at DESC',
+    [projectId]
+  );
+  return (rows || []).map(row => ({
+    ...row,
+    engine_condition: row.engine_condition ? true : row.engine_condition === 0 ? false : null,
+    hydraulic_systems: row.hydraulic_systems ? true : row.hydraulic_systems === 0 ? false : null,
+    tires_tracks: row.tires_tracks ? true : row.tires_tracks === 0 ? false : null,
+    lights_mirrors: row.lights_mirrors ? true : row.lights_mirrors === 0 ? false : null,
+    safety_devices: row.safety_devices ? true : row.safety_devices === 0 ? false : null,
+    fluid_levels: row.fluid_levels ? true : row.fluid_levels === 0 ? false : null,
+    structural_integrity: row.structural_integrity ? true : row.structural_integrity === 0 ? false : null,
+    operator_controls: row.operator_controls ? true : row.operator_controls === 0 ? false : null,
+  }));
+};
+
+export const getEquipmentInspectionById = async (
+  id: string
+): Promise<EquipmentInspection | null> => {
+  const database = await getDatabase();
+  const row = await database.getFirstAsync<any>(
+    'SELECT * FROM equipment_inspections WHERE id = ?',
+    [id]
+  );
+  if (!row) return null;
+  return {
+    ...row,
+    engine_condition: row.engine_condition ? true : row.engine_condition === 0 ? false : null,
+    hydraulic_systems: row.hydraulic_systems ? true : row.hydraulic_systems === 0 ? false : null,
+    tires_tracks: row.tires_tracks ? true : row.tires_tracks === 0 ? false : null,
+    lights_mirrors: row.lights_mirrors ? true : row.lights_mirrors === 0 ? false : null,
+    safety_devices: row.safety_devices ? true : row.safety_devices === 0 ? false : null,
+    fluid_levels: row.fluid_levels ? true : row.fluid_levels === 0 ? false : null,
+    structural_integrity: row.structural_integrity ? true : row.structural_integrity === 0 ? false : null,
+    operator_controls: row.operator_controls ? true : row.operator_controls === 0 ? false : null,
+  };
 };
