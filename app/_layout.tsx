@@ -1,5 +1,5 @@
 import '../global.css';
-import { Stack } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -12,6 +12,23 @@ import { useEffect } from 'react';
 
 function RootLayoutContent() {
   const { isAuthenticated, isLoading } = useAuth();
+  const segments = useSegments();
+  const router = useRouter();
+
+  // Auth gate. The app has no `app/index.tsx`, so the root route `/` resolves
+  // to `(home)/index` (route groups don't add to the URL). Conditionally
+  // declaring screens is not enough to block that, so we explicitly redirect:
+  // unauthenticated users are sent to /login, and a freshly authenticated user
+  // sitting on /login is sent into the app.
+  useEffect(() => {
+    if (isLoading) return;
+    const onLoginScreen = segments[0] === 'login';
+    if (!isAuthenticated && !onLoginScreen) {
+      router.replace('/login');
+    } else if (isAuthenticated && onLoginScreen) {
+      router.replace('/(home)');
+    }
+  }, [isAuthenticated, isLoading, segments]);
 
   // Ask for notification permission once a user is signed in so HIGH-severity
   // events can surface as device notifications (works offline).
@@ -29,23 +46,20 @@ function RootLayoutContent() {
     );
   }
 
+  // Declare every screen unconditionally so navigation targets always exist;
+  // the effect above enforces which one the user is allowed to be on.
   return (
     <Stack
       screenOptions={{
         headerShown: false,
       }}
     >
-      {!isAuthenticated ? (
-        <Stack.Screen name="login" />
-      ) : (
-        <>
-          <Stack.Screen name="(home)" />
-          <Stack.Screen
-            name="(inspection)"
-            options={{ presentation: 'card' }}
-          />
-        </>
-      )}
+      <Stack.Screen name="login" />
+      <Stack.Screen name="(home)" />
+      <Stack.Screen
+        name="(inspection)"
+        options={{ presentation: 'card' }}
+      />
     </Stack>
   );
 }
