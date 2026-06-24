@@ -560,6 +560,191 @@ app.post('/api/alerts/:id/acknowledge', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /api/incidents
+ * Creates a new workplace incident report. HIGH severity incidents trigger
+ * management alerts. All inspectors can report; managers can review.
+ */
+app.post('/api/incidents', async (req: Request, res: Response) => {
+  const { projectId, category, severity, description, location, involvedParties, reporterName, correctiveActions } = req.body;
+
+  if (!projectId || !category || !severity || !description || !reporterName) {
+    return res.status(400).json({
+      success: false,
+      error: 'Missing required fields: projectId, category, severity, description, reporterName',
+    });
+  }
+
+  if (!canAccessProject(req.user, projectId)) {
+    return res.status(403).json({ success: false, error: 'Not authorized for this project' });
+  }
+
+  const client = await pool.connect();
+  try {
+    const incidentId = require('uuid').v4();
+    const now = new Date().toISOString();
+
+    await client.query(
+      `INSERT INTO incident_reports
+       (id, project_id, category, severity, description, location, date_time, involved_parties, status, reporter_name, corrective_actions, sync_status, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+      [
+        incidentId,
+        projectId,
+        category,
+        severity,
+        description,
+        location ?? null,
+        now,
+        involvedParties ?? null,
+        'OPEN',
+        reporterName,
+        correctiveActions ?? null,
+        'PENDING',
+        now,
+        now,
+      ]
+    );
+
+    // If HIGH severity, create alert for managers
+    if (severity === 'HIGH') {
+      const alertId = require('uuid').v4();
+      await client.query(
+        `INSERT INTO alerts
+         (id, instance_id, result_id, project_id, title, body, severity, acknowledged, created_by, created_at, received_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE, $8, $9, NOW())`,
+        [
+          alertId,
+          null,
+          incidentId,
+          projectId,
+          `HIGH SEVERITY: ${category.replace(/_/g, ' ')} Reported`,
+          `${reporterName} reported a ${severity} severity incident: ${description.substring(0, 80)}...`,
+          'HIGH',
+          req.user?.id ?? null,
+          now,
+        ]
+      );
+    }
+
+    return res.json({
+      success: true,
+      incident: { id: incidentId, projectId, category, severity, status: 'OPEN' },
+    });
+  } catch (error) {
+    console.error('[INCIDENT CREATE ERROR]', error);
+    return res.status(500).json({ success: false, error: 'Failed to create incident' });
+  } finally {
+    client.release();
+  }
+});
+
+/**
+ * GET /api/incidents?projectId=<id>
+ * Returns all incidents for a project (or all if admin). Supports filtering by status.
+ */
+app.get('/api/incidents', async (req: Request, res: Response) => {
+  const { projectId, status } = req.query;
+
+  if (!projectId) {
+    return res.status(400).json({ success: false, error: 'projectId query parameter required' });
+  }
+
+  if (!canAccessProject(req.user, projectId as string)) {
+    return res.status(403).json({ success: false, error: 'Not authorized for this project' });
+  }
+
+  try {
+    const clauses = ['project_id = $1'];
+    const params: any[] = [projectId];
+
+    if (status) {
+      params.push(status);
+      clauses.push(`status = $${params.length}`);
+    }
+
+    const result = await pool.query(
+      `SELECT * FROM incident_reports WHERE ${clauses.join(' AND ')} ORDER BY created_at DESC`,
+      params
+    );
+
+    return res.json({ success: true, incidents: result.rows });
+  } catch (error) {
+    console.error('[INCIDENTS LIST ERROR]', error);
+    return res.status(500).json({ success: false, error: 'Failed to fetch incidents' });
+  }
+});
+
+/**
+ * GET /api/incidents/:id
+ * Returns a single incident with full details.
+ */
+app.get('/api/incidents/:id', async (req: Request, res: Response) => {
+  if (!isUuid(req.params.id)) {
+    return res.status(400).json({ success: false, error: 'Invalid incident id' });
+  }
+
+  try {
+    const { rows } = await pool.query('SELECT * FROM incident_reports WHERE id = $1', [req.params.id]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Incident not found' });
+    }
+
+    const incident = rows[0];
+    if (!canAccessProject(req.user, incident.project_id)) {
+      return res.status(403).json({ success: false, error: 'Not authorized for this incident' });
+    }
+
+    return res.json({ success: true, incident });
+  } catch (error) {
+    console.error('[INCIDENT DETAIL ERROR]', error);
+    return res.status(500).json({ success: false, error: 'Failed to fetch incident' });
+  }
+});
+
+/**
+ * PUT /api/incidents/:id
+ * Updates incident status (OPEN, UNDER_REVIEW, RESOLVED). Managers only.
+ */
+app.put('/api/incidents/:id', async (req: Request, res: Response) => {
+  if (req.user?.role !== 'manager' && req.user?.role !== 'admin') {
+    return res.status(403).json({ success: false, error: 'Management access required' });
+  }
+
+  if (!isUuid(req.params.id)) {
+    return res.status(400).json({ success: false, error: 'Invalid incident id' });
+  }
+
+  const { status } = req.body;
+  if (!status || !['OPEN', 'UNDER_REVIEW', 'RESOLVED'].includes(status)) {
+    return res.status(400).json({ success: false, error: 'Invalid status' });
+  }
+
+  try {
+    const { rows } = await pool.query('SELECT project_id FROM incident_reports WHERE id = $1', [req.params.id]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Incident not found' });
+    }
+
+    if (!canAccessProject(req.user, rows[0].project_id)) {
+      return res.status(403).json({ success: false, error: 'Not authorized for this incident' });
+    }
+
+    const now = new Date().toISOString();
+    await pool.query(
+      'UPDATE incident_reports SET status = $1, sync_status = $2, updated_at = $3 WHERE id = $4',
+      [status, 'PENDING', now, req.params.id]
+    );
+
+    return res.json({ success: true, incident: { id: req.params.id, status } });
+  } catch (error) {
+    console.error('[INCIDENT UPDATE ERROR]', error);
+    return res.status(500).json({ success: false, error: 'Failed to update incident' });
+  }
+});
+
 async function upsertChecklistResult(client: PoolClient, result: any) {
   const {
     id,
