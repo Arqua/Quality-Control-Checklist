@@ -183,7 +183,7 @@ export default function NewChecklistScreen() {
         <TouchableOpacity
           onPress={handleCreateChecklist}
           disabled={creating || !selectedTemplate || !inspectorName.trim()}
-          className={`py-3 px-4 rounded-lg flex-row items-center justify-center ${
+          className={`py-3.5 px-4 rounded-xl flex-row items-center justify-center ${
             creating || !selectedTemplate || !inspectorName.trim()
               ? 'bg-gray-300'
               : 'bg-construction-orange'

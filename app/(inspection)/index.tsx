@@ -523,13 +523,13 @@ export default function InspectionScreen() {
 
       {/* Bottom Action (in-flow footer so it rides above the keyboard) */}
       <View
-        className="bg-white border-t border-gray-300 px-4 py-3"
+        className="bg-surface border-t border-line px-4 py-3"
         style={{ paddingBottom: insets.bottom + 12 }}
       >
         <TouchableOpacity
           onPress={handleOpenSignOff}
           disabled={!isComplete || isCompleted}
-          className={`py-3 px-4 rounded-lg flex-row items-center justify-center ${
+          className={`py-3.5 px-4 rounded-xl flex-row items-center justify-center ${
             !isComplete || isCompleted ? 'bg-gray-300' : 'bg-construction-orange'
           }`}
         >

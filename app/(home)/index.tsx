@@ -11,10 +11,13 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { MaterialIcons, AntDesign } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as db from '@/database/db';
 import { runSync } from '@/services/sync';
 import { useNotification } from '@/components/Notification';
 import { useAuth } from '@/auth/authContext';
+import { Card, ActionTile, PrimaryButton } from '@/components/ui';
+import { shadowCard } from '@/components/ui/shadows';
 import { Project, Template, ChecklistInstance } from '@/types/database';
 
 export default function HomeScreen() {
@@ -171,84 +174,112 @@ export default function HomeScreen() {
 
   if (loading) {
     return (
-      <View className="flex-1 justify-center items-center bg-construction-light">
+      <View className="flex-1 justify-center items-center bg-canvas">
         <ActivityIndicator size="large" color="#004E89" />
       </View>
     );
   }
 
   return (
-    <View className="flex-1 bg-construction-light" style={{ paddingTop: insets.top }}>
+    <View className="flex-1 bg-canvas" style={{ paddingTop: insets.top }}>
       {/* Header */}
-      <View className="bg-construction-dark px-4 py-4">
-        <View className="flex-row justify-between items-center mb-3">
-          <View className="flex-1">
-            <Text className="text-white text-2xl font-bold">QC Checklist</Text>
-            <Text className="text-white text-sm opacity-75">
-              {isManager ? 'Management Mode' : 'Construction Site Inspector'}
-              {user ? ` · ${user.username}` : ''}
-            </Text>
+      <LinearGradient
+        colors={['#004E89', '#0A6FB8']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[
+          { borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
+          shadowCard,
+        ]}
+      >
+        <View className="px-5 pt-4 pb-5">
+          <View className="flex-row justify-between items-center mb-4">
+            <View className="flex-row items-center flex-1">
+              <View className="w-11 h-11 rounded-2xl bg-white/15 items-center justify-center mr-3">
+                <MaterialIcons name="engineering" size={24} color="#FF8A5C" />
+              </View>
+              <View className="flex-1">
+                <Text className="text-white text-xl font-bold tracking-tight">
+                  QC Checklist
+                </Text>
+                <View className="flex-row items-center mt-0.5">
+                  <View className="bg-white/15 rounded-full px-2 py-0.5">
+                    <Text className="text-white/90 text-[11px] font-semibold">
+                      {isManager ? 'Management' : 'Inspector'}
+                    </Text>
+                  </View>
+                  {user ? (
+                    <Text className="text-white/70 text-xs ml-2">
+                      {user.username}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+            </View>
+
+            {/* Manager-only alerts bell */}
+            {isManager && (
+              <TouchableOpacity
+                onPress={() => router.push('/(home)/alerts')}
+                className="p-2 mr-0.5"
+              >
+                <MaterialIcons name="notifications" size={24} color="white" />
+                {unreadAlerts > 0 && (
+                  <View className="absolute right-0 top-0 bg-red-500 rounded-full min-w-[18px] h-[18px] items-center justify-center px-1">
+                    <Text className="text-white text-[10px] font-bold">
+                      {unreadAlerts > 99 ? '99+' : unreadAlerts}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              onPress={() => router.push('/(home)/activity-log')}
+              className="p-2 mr-0.5"
+            >
+              <MaterialIcons name="history" size={22} color="white" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => router.push('/(home)/settings')}
+              className="p-2 mr-0.5"
+            >
+              <MaterialIcons name="settings" size={22} color="white" />
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={logout} className="p-2">
+              <AntDesign name="logout" size={20} color="white" />
+            </TouchableOpacity>
           </View>
 
-          {/* Manager-only alerts bell */}
-          {isManager && (
+          <View className="flex-row gap-2.5">
             <TouchableOpacity
-              onPress={() => router.push('/(home)/alerts')}
-              className="p-2 mr-1"
+              onPress={() => setShowProjectModal(true)}
+              activeOpacity={0.85}
+              className="flex-1 bg-white rounded-xl py-3"
+              style={shadowCard}
             >
-              <MaterialIcons name="notifications" size={26} color="white" />
-              {unreadAlerts > 0 && (
-                <View className="absolute right-0 top-0 bg-red-600 rounded-full min-w-[18px] h-[18px] items-center justify-center px-1">
-                  <Text className="text-white text-[10px] font-bold">
-                    {unreadAlerts > 99 ? '99+' : unreadAlerts}
-                  </Text>
-                </View>
+              <View className="flex-row items-center justify-center">
+                <MaterialIcons name="add" size={20} color="#F2530F" />
+                <Text className="text-brand-700 font-bold ml-1">New Project</Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleManualSync}
+              disabled={syncing}
+              activeOpacity={0.85}
+              className="bg-white/15 rounded-xl px-4 items-center justify-center"
+            >
+              {syncing ? (
+                <ActivityIndicator size="small" color="white" />
+              ) : (
+                <MaterialIcons name="sync" size={20} color="white" />
               )}
             </TouchableOpacity>
-          )}
-
-          <TouchableOpacity
-            onPress={() => router.push('/(home)/activity-log')}
-            className="p-2 mr-1"
-          >
-            <MaterialIcons name="history" size={24} color="white" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => router.push('/(home)/settings')}
-            className="p-2 mr-1"
-          >
-            <MaterialIcons name="settings" size={24} color="white" />
-          </TouchableOpacity>
-
-          <TouchableOpacity onPress={logout} className="p-2">
-            <AntDesign name="logout" size={22} color="white" />
-          </TouchableOpacity>
+          </View>
         </View>
-
-        <View className="flex-row gap-2">
-          <TouchableOpacity
-            onPress={() => setShowProjectModal(true)}
-            className="flex-1 bg-construction-orange rounded-lg py-3"
-          >
-            <View className="flex-row items-center justify-center">
-              <MaterialIcons name="add" size={20} color="white" />
-              <Text className="text-white font-bold ml-1">New Project</Text>
-            </View>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleManualSync}
-            disabled={syncing}
-            className="border border-white rounded-lg px-3 py-3"
-          >
-            {syncing ? (
-              <ActivityIndicator size="small" color="white" />
-            ) : (
-              <MaterialIcons name="sync" size={20} color="white" />
-            )}
-          </TouchableOpacity>
-        </View>
-      </View>
+      </LinearGradient>
 
       <ScrollView
         className="flex-1"
@@ -258,10 +289,14 @@ export default function HomeScreen() {
         {isManager && unreadAlerts > 0 && (
           <TouchableOpacity
             onPress={() => router.push('/(home)/alerts')}
-            className="bg-red-600 rounded-lg p-4 mb-4 flex-row items-center"
+            activeOpacity={0.9}
+            className="rounded-2xl p-4 mb-5 flex-row items-center"
+            style={[{ backgroundColor: '#DC2626' }, shadowCard]}
           >
-            <MaterialIcons name="warning" size={24} color="white" />
-            <Text className="text-white font-bold ml-2 flex-1">
+            <View className="w-10 h-10 rounded-xl bg-white/20 items-center justify-center">
+              <MaterialIcons name="warning" size={22} color="white" />
+            </View>
+            <Text className="text-white font-semibold ml-3 flex-1">
               {unreadAlerts} serious event{unreadAlerts > 1 ? 's' : ''} need attention
             </Text>
             <MaterialIcons name="chevron-right" size={24} color="white" />
@@ -269,150 +304,131 @@ export default function HomeScreen() {
         )}
 
         {/* Safety Features Section */}
-        <View className="mb-4">
-          <Text className="text-construction-dark font-bold text-lg mb-3">Safety</Text>
+        <View className="mb-5">
+          <Text className="text-ink font-bold text-lg mb-3 tracking-tight">Safety</Text>
           <View className="flex-row gap-3 mb-3">
-            <TouchableOpacity
+            <ActionTile
+              icon="emergency"
+              label="Report Incident"
+              color="#DC2626"
+              disabled={!selectedProject}
               onPress={() =>
                 router.push({
                   pathname: '/(safety)/report-incident',
                   params: { projectId: selectedProject?.id || '' },
                 })
               }
-              disabled={!selectedProject}
-              className="flex-1 bg-red-50 rounded-lg p-4 border border-red-200 items-center justify-center"
-            >
-              <MaterialIcons name="emergency" size={28} color="#DC2626" />
-              <Text className="text-red-700 font-bold text-xs mt-2 text-center">
-                Report Incident
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
+            />
+            <ActionTile
+              icon="lightbulb"
+              label="Safety Tips"
+              color="#3B82F6"
               onPress={() => router.push('/(safety)/safety-tips')}
-              className="flex-1 bg-blue-50 rounded-lg p-4 border border-blue-200 items-center justify-center"
-            >
-              <MaterialIcons name="lightbulb" size={28} color="#3B82F6" />
-              <Text className="text-blue-700 font-bold text-xs mt-2 text-center">
-                Safety Tips
-              </Text>
-            </TouchableOpacity>
-
+            />
             {isManager && (
-              <TouchableOpacity
+              <ActionTile
+                icon="assignment-late"
+                label="View Incidents"
+                color="#EA580C"
+                disabled={!selectedProject}
                 onPress={() =>
                   router.push({
                     pathname: '/(safety)/incidents-list',
                     params: { projectId: selectedProject?.id || '' },
                   })
                 }
-                disabled={!selectedProject}
-                className="flex-1 bg-orange-50 rounded-lg p-4 border border-orange-200 items-center justify-center"
-              >
-                <MaterialIcons name="assignment-late" size={28} color="#EA580C" />
-                <Text className="text-orange-700 font-bold text-xs mt-2 text-center">
-                  View Incidents
-                </Text>
-              </TouchableOpacity>
+              />
             )}
           </View>
+        </View>
 
-          {/* Equipment Permits Section */}
-          <Text className="text-construction-dark font-bold text-lg mb-3">Equipment Permits</Text>
+        {/* Equipment Permits Section */}
+        <View className="mb-5">
+          <Text className="text-ink font-bold text-lg mb-3 tracking-tight">Equipment Permits</Text>
           <View className="flex-row gap-3">
-            <TouchableOpacity
+            <ActionTile
+              icon="local-fire-department"
+              label="Hot Work Permit"
+              color="#D97706"
+              disabled={!selectedProject}
               onPress={() =>
                 router.push({
                   pathname: '/(safety)/hot-work-permit',
                   params: { projectId: selectedProject?.id || '' },
                 })
               }
+            />
+            <ActionTile
+              icon="construction"
+              label="Rigging Form"
+              color="#7C3AED"
               disabled={!selectedProject}
-              className="flex-1 bg-yellow-50 rounded-lg p-4 border border-yellow-200 items-center justify-center"
-            >
-              <MaterialIcons name="local-fire-department" size={28} color="#D97706" />
-              <Text className="text-yellow-700 font-bold text-xs mt-2 text-center">
-                Hot Work Permit
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
               onPress={() =>
                 router.push({
                   pathname: '/(safety)/rigging-form',
                   params: { projectId: selectedProject?.id || '' },
                 })
               }
-              disabled={!selectedProject}
-              className="flex-1 bg-purple-50 rounded-lg p-4 border border-purple-200 items-center justify-center"
-            >
-              <MaterialIcons name="construction" size={28} color="#7C3AED" />
-              <Text className="text-purple-700 font-bold text-xs mt-2 text-center">
-                Rigging Form
-              </Text>
-            </TouchableOpacity>
+            />
           </View>
         </View>
 
         {/* Equipment Inspection Section */}
-        <View className="mb-4">
-          <Text className="text-construction-dark font-bold text-lg mb-3">Equipment Inspection</Text>
+        <View className="mb-5">
+          <Text className="text-ink font-bold text-lg mb-3 tracking-tight">Equipment Inspection</Text>
           <View className="flex-row gap-3">
-            <TouchableOpacity
+            <ActionTile
+              icon="checklist-rtl"
+              label="Inspect Equipment"
+              color="#0D9488"
+              disabled={!selectedProject}
               onPress={() =>
                 router.push({
                   pathname: '/(equipment)/inspect-equipment',
                   params: { projectId: selectedProject?.id || '' },
                 })
               }
+            />
+            <ActionTile
+              icon="list"
+              label="View Inspections"
+              color="#0891B2"
               disabled={!selectedProject}
-              className="flex-1 bg-teal-50 rounded-lg p-4 border border-teal-200 items-center justify-center"
-            >
-              <MaterialIcons name="checklist-rtl" size={28} color="#0d9488" />
-              <Text className="text-teal-700 font-bold text-xs mt-2 text-center">
-                Inspect Equipment
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
               onPress={() =>
                 router.push({
                   pathname: '/(equipment)/equipment-list',
                   params: { projectId: selectedProject?.id || '' },
                 })
               }
-              disabled={!selectedProject}
-              className="flex-1 bg-cyan-50 rounded-lg p-4 border border-cyan-200 items-center justify-center"
-            >
-              <MaterialIcons name="list" size={28} color="#0891b2" />
-              <Text className="text-cyan-700 font-bold text-xs mt-2 text-center">
-                View Inspections
-              </Text>
-            </TouchableOpacity>
+            />
           </View>
         </View>
 
         {/* Search and Filter */}
-        <View className="mb-4">
-          <TextInput
-            placeholder="Search projects..."
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            className="bg-white border border-gray-300 rounded-lg px-4 py-3 mb-3 text-construction-dark"
-            placeholderTextColor="#9CA3AF"
-          />
+        <View className="mb-5">
+          <View className="flex-row items-center bg-surface rounded-xl px-4 mb-3" style={shadowCard}>
+            <MaterialIcons name="search" size={20} color="#9AA7B8" />
+            <TextInput
+              placeholder="Search projects..."
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              className="flex-1 px-3 py-3.5 text-ink text-base"
+              placeholderTextColor="#9AA7B8"
+            />
+          </View>
           <View className="flex-row gap-2">
             {(['all', 'active', 'completed'] as const).map((filter) => (
               <TouchableOpacity
                 key={filter}
                 onPress={() => setFilterBy(filter)}
-                className={`flex-1 rounded-lg py-2 px-3 ${
-                  filterBy === filter ? 'bg-construction-orange' : 'bg-white border border-gray-300'
+                activeOpacity={0.85}
+                className={`flex-1 rounded-full py-2.5 px-3 ${
+                  filterBy === filter ? 'bg-brand-700' : 'bg-surface border border-line'
                 }`}
               >
                 <Text
                   className={`text-center text-xs font-bold ${
-                    filterBy === filter ? 'text-white' : 'text-construction-dark'
+                    filterBy === filter ? 'text-white' : 'text-muted'
                   }`}
                 >
                   {filter === 'all' ? 'All' : filter === 'active' ? 'Active' : 'Completed'}
@@ -423,48 +439,65 @@ export default function HomeScreen() {
         </View>
 
         {/* Projects */}
-        <Text className="text-construction-dark text-lg font-bold mb-3">
+        <Text className="text-ink text-lg font-bold mb-3 tracking-tight">
           Projects ({projects.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase())).length})
         </Text>
         {projects.length === 0 ? (
-          <View className="bg-white rounded-lg p-6 items-center mb-6">
-            <MaterialIcons name="folder-open" size={48} color="#ccc" />
-            <Text className="text-construction-dark text-center mt-3">
+          <Card className="p-7 items-center mb-6">
+            <View className="w-14 h-14 rounded-2xl bg-canvas items-center justify-center mb-3">
+              <MaterialIcons name="folder-open" size={30} color="#9AA7B8" />
+            </View>
+            <Text className="text-muted text-center">
               No projects yet. Create one to get started.
             </Text>
-          </View>
+          </Card>
         ) : (
           <View className="mb-6">
             {projects
               .filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
-              .map((project) => (
+              .map((project) => {
+              const active = selectedProject?.id === project.id;
+              return (
               <TouchableOpacity
                 key={project.id}
                 onPress={() => selectProject(project)}
-                className={`mb-2 p-4 rounded-lg border-2 ${
-                  selectedProject?.id === project.id
-                    ? 'bg-construction-dark border-construction-orange'
-                    : 'bg-white border-gray-200'
+                activeOpacity={0.85}
+                className={`mb-2.5 p-4 rounded-2xl flex-row items-center ${
+                  active ? 'bg-brand-700' : 'bg-surface'
                 }`}
+                style={shadowCard}
               >
-                <Text
-                  className={`font-bold text-base ${
-                    selectedProject?.id === project.id ? 'text-white' : 'text-construction-dark'
+                <View
+                  className={`w-10 h-10 rounded-xl items-center justify-center mr-3 ${
+                    active ? 'bg-white/15' : 'bg-canvas'
                   }`}
                 >
-                  {project.name}
-                </Text>
-                <Text
-                  className={`text-sm ${
-                    selectedProject?.id === project.id
-                      ? 'text-white opacity-75'
-                      : 'text-gray-600'
-                  }`}
-                >
-                  {project.location}
-                </Text>
+                  <MaterialIcons
+                    name="business"
+                    size={20}
+                    color={active ? '#FFFFFF' : '#004E89'}
+                  />
+                </View>
+                <View className="flex-1">
+                  <Text
+                    className={`font-bold text-base ${
+                      active ? 'text-white' : 'text-ink'
+                    }`}
+                  >
+                    {project.name}
+                  </Text>
+                  <Text
+                    className={`text-sm ${active ? 'text-white/75' : 'text-muted'}`}
+                  >
+                    {project.location}
+                  </Text>
+                </View>
+                {active && (
+                  <MaterialIcons name="check-circle" size={22} color="#FF8A5C" />
+                )}
               </TouchableOpacity>
-            ))}
+              );
+            })}
           </View>
         )}
 
@@ -472,41 +505,53 @@ export default function HomeScreen() {
         {selectedProject && (
           <View className="mb-6">
             <View className="flex-row justify-between items-center mb-3">
-              <Text className="text-construction-dark text-lg font-bold">
+              <Text className="text-ink text-lg font-bold tracking-tight">
                 Templates ({templates.length})
               </Text>
               <TouchableOpacity
                 onPress={() => setShowTemplateModal(true)}
-                className="bg-construction-orange rounded px-3 py-1 flex-row items-center"
+                activeOpacity={0.85}
+                className="bg-accent-50 rounded-full px-3.5 py-1.5 flex-row items-center"
               >
-                <MaterialIcons name="add" size={18} color="white" />
-                <Text className="text-white font-bold text-xs ml-1">New</Text>
+                <MaterialIcons name="add" size={16} color="#F2530F" />
+                <Text className="text-accent-600 font-bold text-xs ml-1">New</Text>
               </TouchableOpacity>
             </View>
 
             {templates.length === 0 ? (
-              <View className="bg-white rounded-lg p-6 items-center">
-                <MaterialIcons name="description" size={48} color="#ccc" />
-                <Text className="text-construction-dark text-center mt-3">
+              <Card className="p-7 items-center">
+                <View className="w-14 h-14 rounded-2xl bg-canvas items-center justify-center mb-3">
+                  <MaterialIcons name="description" size={30} color="#9AA7B8" />
+                </View>
+                <Text className="text-muted text-center">
                   No templates yet. Create one to start inspections.
                 </Text>
-              </View>
+              </Card>
             ) : (
               templates.map((tmpl) => (
-                <View key={tmpl.id} className="mb-3 bg-white rounded-lg p-4">
-                  <Text className="text-construction-dark font-bold text-base">
-                    {tmpl.name}
-                  </Text>
-                  <Text className="text-gray-600 text-sm">{tmpl.division}</Text>
+                <Card key={tmpl.id} className="mb-3 p-4">
+                  <View className="flex-row items-center mb-3">
+                    <View className="w-10 h-10 rounded-xl bg-brand-50 items-center justify-center mr-3">
+                      <MaterialIcons name="description" size={20} color="#004E89" />
+                    </View>
+                    <View className="flex-1">
+                      <Text className="text-ink font-bold text-base">
+                        {tmpl.name}
+                      </Text>
+                      <Text className="text-muted text-sm">{tmpl.division}</Text>
+                    </View>
+                  </View>
                   <TouchableOpacity
                     onPress={() => handleStartInspection(tmpl.id)}
-                    className="bg-construction-orange rounded py-2 mt-3"
+                    activeOpacity={0.85}
+                    className="bg-accent-50 rounded-xl py-2.5 flex-row items-center justify-center"
                   >
-                    <Text className="text-white text-center font-bold">
+                    <MaterialIcons name="play-arrow" size={18} color="#F2530F" />
+                    <Text className="text-accent-600 text-center font-bold ml-1">
                       Start Inspection
                     </Text>
                   </TouchableOpacity>
-                </View>
+                </Card>
               ))
             )}
           </View>
@@ -515,7 +560,7 @@ export default function HomeScreen() {
         {/* Active checklists */}
         {selectedProject && activeChecklists.length > 0 && (
           <View>
-            <Text className="text-construction-dark text-lg font-bold mb-3">
+            <Text className="text-ink text-lg font-bold mb-3 tracking-tight">
               Checklists ({activeChecklists
                 .filter(c => {
                   const matchesFilter = filterBy === 'all' ||
@@ -534,33 +579,42 @@ export default function HomeScreen() {
                 const matchesSearch = c.inspector_name.toLowerCase().includes(searchQuery.toLowerCase());
                 return matchesFilter && matchesSearch;
               })
-              .map((checklist) => (
+              .map((checklist) => {
+              const completed = checklist.status === 'COMPLETED';
+              return (
               <TouchableOpacity
                 key={checklist.id}
                 onPress={() => handleOpenChecklist(checklist)}
-                className="mb-2 bg-white rounded-lg p-4 border-l-4 border-construction-orange"
+                activeOpacity={0.85}
+                className="mb-2.5 bg-surface rounded-2xl p-4 flex-row items-center"
+                style={shadowCard}
               >
-                <Text className="text-construction-dark font-semibold text-sm">
-                  Created {new Date(checklist.created_at).toLocaleDateString()}
-                </Text>
-                <Text className="text-gray-600 text-xs mt-1">
-                  Inspector: {checklist.inspector_name}
-                </Text>
-                <View className="flex-row items-center mt-2">
-                  <View
-                    className={`rounded px-2 py-1 ${
-                      checklist.status === 'COMPLETED'
-                        ? 'bg-green-600'
-                        : 'bg-construction-orange'
-                    }`}
+                <View
+                  className="w-1 self-stretch rounded-full mr-3"
+                  style={{ backgroundColor: completed ? '#16A34A' : '#FF6B35' }}
+                />
+                <View className="flex-1">
+                  <Text className="text-ink font-semibold text-sm">
+                    Created {new Date(checklist.created_at).toLocaleDateString()}
+                  </Text>
+                  <Text className="text-muted text-xs mt-1">
+                    Inspector: {checklist.inspector_name}
+                  </Text>
+                </View>
+                <View
+                  className="rounded-full px-3 py-1"
+                  style={{ backgroundColor: completed ? '#DCFCE7' : '#FFE0D1' }}
+                >
+                  <Text
+                    className="text-xs font-bold"
+                    style={{ color: completed ? '#15803D' : '#C7400A' }}
                   >
-                    <Text className="text-white text-xs font-bold">
-                      {checklist.status === 'COMPLETED' ? 'Completed' : 'Draft'}
-                    </Text>
-                  </View>
+                    {completed ? 'Completed' : 'Draft'}
+                  </Text>
                 </View>
               </TouchableOpacity>
-            ))}
+              );
+            })}
           </View>
         )}
       </ScrollView>
@@ -573,39 +627,44 @@ export default function HomeScreen() {
         onRequestClose={() => setShowProjectModal(false)}
       >
         <View className="flex-1 bg-black/50 justify-end">
-          <View className="bg-white rounded-t-2xl p-6">
-            <View className="flex-row justify-between items-center mb-4">
-              <Text className="text-construction-dark text-xl font-bold">
+          <View className="bg-surface rounded-t-3xl p-6">
+            <View className="items-center mb-3">
+              <View className="w-10 h-1 rounded-full bg-line" />
+            </View>
+            <View className="flex-row justify-between items-center mb-5">
+              <Text className="text-ink text-xl font-bold tracking-tight">
                 New Project
               </Text>
-              <TouchableOpacity onPress={() => setShowProjectModal(false)}>
-                <MaterialIcons name="close" size={24} color="#004E89" />
+              <TouchableOpacity
+                onPress={() => setShowProjectModal(false)}
+                className="w-8 h-8 rounded-full bg-canvas items-center justify-center"
+              >
+                <MaterialIcons name="close" size={20} color="#6B7A90" />
               </TouchableOpacity>
             </View>
-            <Text className="text-construction-dark font-semibold mb-2">
+            <Text className="text-ink font-semibold text-sm mb-2">
               Project Name
             </Text>
             <TextInput
-              className="border border-gray-300 rounded-lg px-4 py-3 bg-construction-light mb-4"
+              className="border border-line rounded-xl px-4 py-3.5 bg-canvas text-ink mb-4"
               placeholder="e.g., Downtown Office Tower"
               value={projectName}
               onChangeText={setProjectName}
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor="#9AA7B8"
             />
-            <Text className="text-construction-dark font-semibold mb-2">Location</Text>
+            <Text className="text-ink font-semibold text-sm mb-2">Location</Text>
             <TextInput
-              className="border border-gray-300 rounded-lg px-4 py-3 bg-construction-light mb-4"
+              className="border border-line rounded-xl px-4 py-3.5 bg-canvas text-ink mb-5"
               placeholder="e.g., Block A - 123 Main St"
               value={projectLocation}
               onChangeText={setProjectLocation}
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor="#9AA7B8"
             />
-            <TouchableOpacity
+            <PrimaryButton
+              label="Create Project"
+              icon="add"
               onPress={handleCreateProject}
-              className="bg-construction-orange rounded-lg py-3"
-            >
-              <Text className="text-white text-center font-bold">Create Project</Text>
-            </TouchableOpacity>
+            />
           </View>
         </View>
       </Modal>
@@ -618,47 +677,53 @@ export default function HomeScreen() {
         onRequestClose={() => setShowTemplateModal(false)}
       >
         <View className="flex-1 bg-black/50 justify-end">
-          <ScrollView className="bg-white rounded-t-2xl p-6" style={{ maxHeight: '85%' }}>
-            <View className="flex-row justify-between items-center mb-4">
-              <Text className="text-construction-dark text-xl font-bold">
+          <ScrollView className="bg-surface rounded-t-3xl p-6" style={{ maxHeight: '85%' }}>
+            <View className="items-center mb-3">
+              <View className="w-10 h-1 rounded-full bg-line" />
+            </View>
+            <View className="flex-row justify-between items-center mb-5">
+              <Text className="text-ink text-xl font-bold tracking-tight">
                 New Template
               </Text>
-              <TouchableOpacity onPress={() => setShowTemplateModal(false)}>
-                <MaterialIcons name="close" size={24} color="#004E89" />
+              <TouchableOpacity
+                onPress={() => setShowTemplateModal(false)}
+                className="w-8 h-8 rounded-full bg-canvas items-center justify-center"
+              >
+                <MaterialIcons name="close" size={20} color="#6B7A90" />
               </TouchableOpacity>
             </View>
-            <Text className="text-construction-dark font-semibold mb-2">
+            <Text className="text-ink font-semibold text-sm mb-2">
               Template Name
             </Text>
             <TextInput
-              className="border border-gray-300 rounded-lg px-4 py-3 bg-construction-light mb-4"
+              className="border border-line rounded-xl px-4 py-3.5 bg-canvas text-ink mb-4"
               placeholder="e.g., Pre-Pour Concrete"
               value={templateName}
               onChangeText={setTemplateName}
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor="#9AA7B8"
             />
-            <Text className="text-construction-dark font-semibold mb-2">Division</Text>
+            <Text className="text-ink font-semibold text-sm mb-2">Division</Text>
             <TextInput
-              className="border border-gray-300 rounded-lg px-4 py-3 bg-construction-light mb-4"
+              className="border border-line rounded-xl px-4 py-3.5 bg-canvas text-ink mb-4"
               placeholder="e.g., Concrete Pouring"
               value={templateDivision}
               onChangeText={setTemplateDivision}
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor="#9AA7B8"
             />
             <View className="flex-row justify-between items-center mb-2">
-              <Text className="text-construction-dark font-semibold">
+              <Text className="text-ink font-semibold text-sm">
                 Checklist Items
               </Text>
               <TouchableOpacity
                 onPress={() => setTemplateItems((prev) => [...prev, ''])}
               >
-                <Text className="text-construction-orange font-bold">+ Add item</Text>
+                <Text className="text-accent-600 font-bold">+ Add item</Text>
               </TouchableOpacity>
             </View>
             {templateItems.map((item, idx) => (
               <TextInput
                 key={idx}
-                className="border border-gray-300 rounded-lg px-4 py-3 bg-construction-light mb-2"
+                className="border border-line rounded-xl px-4 py-3.5 bg-canvas text-ink mb-2"
                 placeholder={`Item ${idx + 1}`}
                 value={item}
                 onChangeText={(text) =>
@@ -668,15 +733,16 @@ export default function HomeScreen() {
                     return next;
                   })
                 }
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor="#9AA7B8"
               />
             ))}
-            <TouchableOpacity
-              onPress={handleCreateTemplate}
-              className="bg-construction-orange rounded-lg py-3 mt-4 mb-6"
-            >
-              <Text className="text-white text-center font-bold">Create Template</Text>
-            </TouchableOpacity>
+            <View className="mt-4 mb-6">
+              <PrimaryButton
+                label="Create Template"
+                icon="add"
+                onPress={handleCreateTemplate}
+              />
+            </View>
           </ScrollView>
         </View>
       </Modal>

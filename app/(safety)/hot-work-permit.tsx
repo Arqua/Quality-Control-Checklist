@@ -85,7 +85,7 @@ export default function HotWorkPermitScreen() {
             placeholder="e.g., HWP-2024-001"
             value={permitNumber}
             onChangeText={setPermitNumber}
-            className="bg-white border border-gray-300 rounded-lg px-4 py-3 text-construction-dark"
+            className="bg-canvas border border-line rounded-xl px-4 py-3.5 text-ink"
             placeholderTextColor="#9CA3AF"
           />
         </View>
@@ -98,7 +98,7 @@ export default function HotWorkPermitScreen() {
             placeholder="Where will the hot work occur?"
             value={workLocation}
             onChangeText={setWorkLocation}
-            className="bg-white border border-gray-300 rounded-lg px-4 py-3 text-construction-dark"
+            className="bg-canvas border border-line rounded-xl px-4 py-3.5 text-ink"
             placeholderTextColor="#9CA3AF"
           />
         </View>
@@ -113,7 +113,7 @@ export default function HotWorkPermitScreen() {
             onChangeText={setWorkDescription}
             multiline
             numberOfLines={4}
-            className="bg-white border border-gray-300 rounded-lg px-4 py-3 text-construction-dark"
+            className="bg-canvas border border-line rounded-xl px-4 py-3.5 text-ink"
             placeholderTextColor="#9CA3AF"
           />
         </View>
@@ -126,7 +126,7 @@ export default function HotWorkPermitScreen() {
             placeholder="YYYY-MM-DD HH:MM"
             value={startDate}
             onChangeText={setStartDate}
-            className="bg-white border border-gray-300 rounded-lg px-4 py-3 text-construction-dark"
+            className="bg-canvas border border-line rounded-xl px-4 py-3.5 text-ink"
             placeholderTextColor="#9CA3AF"
           />
         </View>
@@ -139,7 +139,7 @@ export default function HotWorkPermitScreen() {
             placeholder="YYYY-MM-DD HH:MM"
             value={endDate}
             onChangeText={setEndDate}
-            className="bg-white border border-gray-300 rounded-lg px-4 py-3 text-construction-dark"
+            className="bg-canvas border border-line rounded-xl px-4 py-3.5 text-ink"
             placeholderTextColor="#9CA3AF"
           />
         </View>
@@ -152,7 +152,7 @@ export default function HotWorkPermitScreen() {
             placeholder="Name of person authorizing work"
             value={authorizedBy}
             onChangeText={setAuthorizedBy}
-            className="bg-white border border-gray-300 rounded-lg px-4 py-3 text-construction-dark"
+            className="bg-canvas border border-line rounded-xl px-4 py-3.5 text-ink"
             placeholderTextColor="#9CA3AF"
           />
         </View>
@@ -167,7 +167,7 @@ export default function HotWorkPermitScreen() {
             onChangeText={setPrecautionsTaken}
             multiline
             numberOfLines={4}
-            className="bg-white border border-gray-300 rounded-lg px-4 py-3 text-construction-dark"
+            className="bg-canvas border border-line rounded-xl px-4 py-3.5 text-ink"
             placeholderTextColor="#9CA3AF"
           />
         </View>
@@ -182,7 +182,7 @@ export default function HotWorkPermitScreen() {
             onChangeText={setEquipmentList}
             multiline
             numberOfLines={3}
-            className="bg-white border border-gray-300 rounded-lg px-4 py-3 text-construction-dark"
+            className="bg-canvas border border-line rounded-xl px-4 py-3.5 text-ink"
             placeholderTextColor="#9CA3AF"
           />
         </View>
@@ -195,20 +195,20 @@ export default function HotWorkPermitScreen() {
             placeholder="Primary contact for this permit"
             value={responsiblePerson}
             onChangeText={setResponsiblePerson}
-            className="bg-white border border-gray-300 rounded-lg px-4 py-3 text-construction-dark"
+            className="bg-canvas border border-line rounded-xl px-4 py-3.5 text-ink"
             placeholderTextColor="#9CA3AF"
           />
         </View>
       </ScrollView>
 
       <View
-        className="bg-white border-t border-gray-300 px-4 py-3"
+        className="bg-surface border-t border-line px-4 py-3"
         style={{ paddingBottom: insets.bottom + 12 }}
       >
         <TouchableOpacity
           onPress={handleSubmit}
           disabled={submitting}
-          className={`py-3 px-4 rounded-lg flex-row items-center justify-center ${
+          className={`py-3.5 px-4 rounded-xl flex-row items-center justify-center ${
             submitting ? 'bg-gray-300' : 'bg-construction-orange'
           }`}
         >
