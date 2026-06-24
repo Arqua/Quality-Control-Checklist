@@ -14,6 +14,9 @@ import {
   Severity,
   Alert,
   Activity,
+  SafetyTip,
+  IncidentCategory,
+  IncidentReport,
 } from '../types/database';
 
 const DB_NAME = 'qc-checklist.db';
@@ -860,6 +863,73 @@ export const acknowledgeAlert = async (id: string): Promise<void> => {
     'UPDATE alerts SET acknowledged = 1 WHERE id = ?',
     [id]
   );
+};
+
+/** Alerts raised on this device that have not yet been pushed to the backend. */
+export const getPendingAlerts = async (): Promise<Alert[]> => {
+  const database = await getDatabase();
+  const rows = await database.getAllAsync<Alert>(
+    "SELECT * FROM alerts WHERE sync_status = 'PENDING' ORDER BY created_at ASC"
+  );
+  return rows || [];
+};
+
+/** Marks the given alerts as successfully synced to the backend. */
+export const markAlertsSynced = async (ids: string[]): Promise<void> => {
+  if (ids.length === 0) return;
+  const database = await getDatabase();
+  const placeholders = ids.map(() => '?').join(',');
+  await database.runAsync(
+    `UPDATE alerts SET sync_status = 'SYNCED' WHERE id IN (${placeholders})`,
+    ids
+  );
+};
+
+/**
+ * Stores an alert pulled from the backend (raised on another device). Returns
+ * true when the alert is new to this device so callers can surface a local
+ * notification. Existing rows only have their acknowledged flag reconciled.
+ */
+export const upsertServerAlert = async (a: {
+  id: string;
+  instance_id: string;
+  result_id?: string | null;
+  project_id?: string | null;
+  title: string;
+  body: string;
+  severity: Severity;
+  acknowledged?: boolean | number;
+  created_at: string;
+}): Promise<boolean> => {
+  const database = await getDatabase();
+  const ack = a.acknowledged ? 1 : 0;
+  const existing = await database.getFirstAsync<{ id: string }>(
+    'SELECT id FROM alerts WHERE id = ?',
+    [a.id]
+  );
+
+  if (existing) {
+    await database.runAsync('UPDATE alerts SET acknowledged = ? WHERE id = ?', [ack, a.id]);
+    return false;
+  }
+
+  await database.runAsync(
+    `INSERT INTO alerts
+     (id, instance_id, result_id, project_id, title, body, severity, acknowledged, sync_status, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'SYNCED', ?)`,
+    [
+      a.id,
+      a.instance_id,
+      a.result_id ?? null,
+      a.project_id ?? null,
+      a.title,
+      a.body,
+      a.severity,
+      ack,
+      a.created_at,
+    ]
+  );
+  return true;
 };
 
 // ACTIVITY LOG — team collaboration and audit trail

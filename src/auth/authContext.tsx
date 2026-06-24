@@ -67,7 +67,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       const response = await axios.post(
         `${API_BASE_URL}/auth/login`,
         { username: username.trim(), password },
-        { timeout: 15000 }
+        // Generous timeout: a free-tier backend (e.g. Render) spins down when
+        // idle and can take 30-60s to cold-start on the first request.
+        { timeout: 60000 }
       );
 
       if (response.data?.success && response.data?.token && response.data?.user) {

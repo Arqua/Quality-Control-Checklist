@@ -5,6 +5,7 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
@@ -128,7 +129,7 @@ export default function IncidentsListScreen() {
         contentContainerStyle={{ padding: 12, paddingBottom: insets.bottom + 24 }}
         ListEmptyComponent={
           <View className="items-center justify-center py-12">
-            <MaterialIcons name="incident" size={48} color="#ccc" />
+            <MaterialIcons name="inbox" size={48} color="#ccc" />
             <Text className="text-construction-dark text-center mt-3 text-gray-500">
               {statusFilter === 'ALL'
                 ? 'No incidents reported'

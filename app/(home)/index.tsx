@@ -20,7 +20,7 @@ import { Project, Template, ChecklistInstance } from '@/types/database';
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { logout, isManager, user } = useAuth();
+  const { logout, isManager, user, token } = useAuth();
   const { notify } = useNotification();
 
   const [projects, setProjects] = useState<Project[]>([]);
@@ -153,12 +153,14 @@ export default function HomeScreen() {
   const handleManualSync = async () => {
     setSyncing(true);
     try {
-      const result = await runSync();
+      const result = await runSync(token ?? undefined);
       if (!result.ok) {
         notify({ type: 'error', message: result.reason ?? 'Sync failed' });
       } else {
         notify({ type: 'success', message: 'Sync complete' });
         if (selectedProject) await selectProject(selectedProject);
+        // Reflect any alerts pulled from other devices in the manager badge.
+        if (isManager) setUnreadAlerts(await db.getUnacknowledgedAlertCount());
       }
     } catch (error) {
       notify({ type: 'error', message: 'Sync failed' });

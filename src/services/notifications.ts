@@ -1,4 +1,6 @@
 import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
 /**
  * Local notification handler. Local (on-device) notifications work fully
@@ -31,6 +33,38 @@ export async function requestNotificationPermissions(): Promise<boolean> {
   } catch (error) {
     console.warn('[notifications] permission request failed', error);
     return false;
+  }
+}
+
+/**
+ * Resolves this device's Expo push token so the backend can fan out
+ * HIGH-severity alerts to it. Returns null on simulators, when permission is
+ * denied, or if the EAS projectId is unavailable — callers treat a null token
+ * as "remote push unavailable" and fall back to pull-based alert sync.
+ */
+export async function getExpoPushToken(): Promise<string | null> {
+  try {
+    const granted = await requestNotificationPermissions();
+    if (!granted) return null;
+
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'Alerts',
+        importance: Notifications.AndroidImportance.MAX,
+      });
+    }
+
+    const projectId =
+      (Constants.expoConfig?.extra as any)?.eas?.projectId ??
+      (Constants as any)?.easConfig?.projectId;
+
+    const tokenResponse = await Notifications.getExpoPushTokenAsync(
+      projectId ? { projectId } : undefined
+    );
+    return tokenResponse.data ?? null;
+  } catch (error) {
+    console.warn('[notifications] could not get Expo push token', error);
+    return null;
   }
 }
 

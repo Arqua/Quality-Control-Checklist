@@ -1,0 +1,40 @@
+# Render Blueprint for the QC Checklist backend API.
+#
+# IMPORTANT: the backend lives in the `backend/` subdirectory, not the repo
+# root (the root is the Expo mobile app, which has no `build` script — that is
+# the cause of the "Missing script: build" deploy error). `rootDir: backend`
+# makes every command run inside backend/, where build/start/migrate exist.
+#
+# To use this blueprint: Render Dashboard -> New -> Blueprint -> pick this repo.
+# If you already created the web service manually, instead set its
+# "Root Directory" to `backend` in the service Settings (see chat instructions).
+
+services:
+  - type: web
+    name: barnard-checklist
+    runtime: node
+    rootDir: backend
+    plan: free
+    # Build deps, compile TypeScript, then apply the (idempotent) DB schema.
+    buildCommand: npm install && npm run build && npm run migrate
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Auto-generated secret used to sign login JWTs.
+      - key: JWT_SECRET
+        generateValue: true
+      # Wired automatically from the managed Postgres instance below.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: barnard-checklist-db
+          property: connectionString
+      # Native app clients are not subject to browser CORS; this is permissive
+      # so any future web client can also reach the API.
+      - key: CORS_ORIGIN
+        value: "*"
+
+databases:
+  - name: barnard-checklist-db
+    plan: free

@@ -123,6 +123,49 @@ CREATE TABLE IF NOT EXISTS device_tokens (
 CREATE INDEX IF NOT EXISTS idx_device_tokens_user ON device_tokens (user_id);
 CREATE INDEX IF NOT EXISTS idx_device_tokens_role ON device_tokens (role);
 
+-- Workplace safety: incident reports ----------------------------------------
+-- Mirrors the mobile `incident_reports` table. HIGH-severity incidents also
+-- raise an `alerts` row so management is notified across devices.
+CREATE TABLE IF NOT EXISTS incident_reports (
+  id                 UUID PRIMARY KEY,
+  project_id         UUID NOT NULL REFERENCES projects(id),
+  category           TEXT NOT NULL,
+  severity           TEXT NOT NULL CHECK (severity IN ('LOW', 'MEDIUM', 'HIGH')),
+  description        TEXT NOT NULL,
+  location           TEXT,
+  date_time          TIMESTAMPTZ NOT NULL,
+  involved_parties   TEXT,
+  status             TEXT NOT NULL DEFAULT 'OPEN'
+                       CHECK (status IN ('OPEN', 'UNDER_REVIEW', 'RESOLVED')),
+  reporter_name      TEXT NOT NULL,
+  corrective_actions TEXT,
+  sync_status        TEXT,
+  created_at         TIMESTAMPTZ NOT NULL,
+  updated_at         TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_incidents_project ON incident_reports (project_id);
+CREATE INDEX IF NOT EXISTS idx_incidents_status  ON incident_reports (status);
+
+CREATE TABLE IF NOT EXISTS incident_attachments (
+  id                 UUID PRIMARY KEY,
+  incident_id        UUID NOT NULL REFERENCES incident_reports(id) ON DELETE CASCADE,
+  photo_local_uri    TEXT NOT NULL,
+  photo_remote_url   TEXT,
+  photo_sync_status  TEXT DEFAULT 'PENDING',
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Workplace safety: safety tips ---------------------------------------------
+CREATE TABLE IF NOT EXISTS safety_tips (
+  id          UUID PRIMARY KEY,
+  title       TEXT NOT NULL,
+  content     TEXT NOT NULL,
+  category    TEXT NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL,
+  last_shown  TIMESTAMPTZ
+);
+
 -- Sync audit log ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS sync_log (
   id               SERIAL PRIMARY KEY,

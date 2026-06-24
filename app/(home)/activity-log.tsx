@@ -112,13 +112,13 @@ export default function ActivityLogScreen() {
               <View
                 className="rounded-full p-2 mr-3"
                 style={{
-                  backgroundColor: `${getActivityColor(item.type, item.severity)}20`,
+                  backgroundColor: `${getActivityColor(item.type, item.severity ?? undefined)}20`,
                 }}
               >
                 <MaterialIcons
                   name={getActivityIcon(item.type)}
                   size={20}
-                  color={getActivityColor(item.type, item.severity)}
+                  color={getActivityColor(item.type, item.severity ?? undefined)}
                 />
               </View>
               <View className="flex-1">

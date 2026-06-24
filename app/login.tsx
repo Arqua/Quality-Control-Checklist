@@ -51,10 +51,10 @@ export default function LoginScreen() {
         {/* Header */}
         <View className="mb-12">
           <Text className="text-white text-4xl font-bold mb-2">
-            QC Checklist
+            Barnard
           </Text>
           <Text className="text-white text-base opacity-75">
-            Construction Site Inspector
+            People building for People.
           </Text>
         </View>
 
