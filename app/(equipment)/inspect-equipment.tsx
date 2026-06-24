@@ -29,8 +29,19 @@ const EQUIPMENT_TYPES = [
   'Other',
 ];
 
+interface Responses {
+  engineCondition: boolean | null;
+  hydraulicSystems: boolean | null;
+  tiresTracks: boolean | null;
+  lightsMirrors: boolean | null;
+  safetyDevices: boolean | null;
+  fluidLevels: boolean | null;
+  structuralIntegrity: boolean | null;
+  operatorControls: boolean | null;
+}
+
 interface InspectionQuestion {
-  key: keyof typeof responses;
+  key: keyof Responses;
   label: string;
 }
 
@@ -44,17 +55,6 @@ const INSPECTION_QUESTIONS: InspectionQuestion[] = [
   { key: 'structuralIntegrity', label: 'Structural Integrity' },
   { key: 'operatorControls', label: 'Operator Controls' },
 ];
-
-interface Responses {
-  engineCondition: boolean | null;
-  hydraulicSystems: boolean | null;
-  tiresTracks: boolean | null;
-  lightsMirrors: boolean | null;
-  safetyDevices: boolean | null;
-  fluidLevels: boolean | null;
-  structuralIntegrity: boolean | null;
-  operatorControls: boolean | null;
-}
 
 export default function InspectEquipmentScreen() {
   const insets = useSafeAreaInsets();
@@ -89,7 +89,7 @@ export default function InspectEquipmentScreen() {
       quality: 0.8,
     });
 
-    if (!result.cancelled && result.assets && result.assets.length > 0) {
+    if (!result.canceled && result.assets && result.assets.length > 0) {
       setPhotoUri(result.assets[0].uri);
     }
   };
@@ -102,7 +102,7 @@ export default function InspectEquipmentScreen() {
       quality: 0.8,
     });
 
-    if (!result.cancelled && result.assets && result.assets.length > 0) {
+    if (!result.canceled && result.assets && result.assets.length > 0) {
       setPhotoUri(result.assets[0].uri);
     }
   };
