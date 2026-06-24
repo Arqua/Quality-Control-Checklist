@@ -12,6 +12,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as db from '@/database/db';
 import { useNotification } from '@/components/Notification';
+import { KeyboardAwareView } from '@/components/KeyboardAwareView';
 import { Template } from '@/types/database';
 
 export default function NewChecklistScreen() {
@@ -99,13 +100,15 @@ export default function NewChecklistScreen() {
   }
 
   return (
+    <KeyboardAwareView>
     <View className="flex-1 bg-construction-light">
       <ScrollView
         className="flex-1"
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={{
           paddingHorizontal: 16,
           paddingVertical: 16,
-          paddingBottom: insets.bottom + 100,
+          paddingBottom: 24,
         }}
       >
         {/* Inspector Name Input */}
@@ -174,8 +177,8 @@ export default function NewChecklistScreen() {
         </View>
       </ScrollView>
 
-      {/* Footer Button */}
-      <View className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-4"
+      {/* Footer Button (in-flow so it rides above the keyboard) */}
+      <View className="bg-white border-t border-gray-200 px-4 py-4"
         style={{ paddingBottom: insets.bottom + 16 }}>
         <TouchableOpacity
           onPress={handleCreateChecklist}
@@ -199,5 +202,6 @@ export default function NewChecklistScreen() {
         </TouchableOpacity>
       </View>
     </View>
+    </KeyboardAwareView>
   );
 }

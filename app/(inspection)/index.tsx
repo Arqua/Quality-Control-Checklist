@@ -17,6 +17,7 @@ import SignatureScreen, {
 } from 'react-native-signature-canvas';
 import { useChecklist } from '@/hooks/useChecklist';
 import { useNotification } from '@/components/Notification';
+import { KeyboardAwareView } from '@/components/KeyboardAwareView';
 import { useAuth } from '@/auth/authContext';
 import { useRouter } from 'expo-router';
 import { capturePhoto, pickPhoto, PhotoResult } from '@/services/photos';
@@ -226,6 +227,7 @@ export default function InspectionScreen() {
   const isCompleted = instance.status === 'COMPLETED';
 
   return (
+    <KeyboardAwareView>
     <View className="flex-1 bg-construction-light">
       {/* Progress Header */}
       <View className="bg-construction-dark px-4 py-4" style={{ paddingTop: insets.top + 10 }}>
@@ -266,10 +268,11 @@ export default function InspectionScreen() {
       {/* Checklist Items */}
       <ScrollView
         className="flex-1"
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={{
           paddingHorizontal: 12,
           paddingVertical: 12,
-          paddingBottom: insets.bottom + 90,
+          paddingBottom: 24,
         }}
       >
         {items.map((item, index) => {
@@ -518,9 +521,9 @@ export default function InspectionScreen() {
         })}
       </ScrollView>
 
-      {/* Bottom Action */}
+      {/* Bottom Action (in-flow footer so it rides above the keyboard) */}
       <View
-        className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-300 px-4 py-3"
+        className="bg-white border-t border-gray-300 px-4 py-3"
         style={{ paddingBottom: insets.bottom + 12 }}
       >
         <TouchableOpacity
@@ -610,6 +613,7 @@ export default function InspectionScreen() {
         </View>
       </Modal>
     </View>
+    </KeyboardAwareView>
   );
 }
 

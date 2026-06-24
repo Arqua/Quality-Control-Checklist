@@ -13,6 +13,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as db from '@/database/db';
 import { useNotification } from '@/components/Notification';
+import { KeyboardAwareView } from '@/components/KeyboardAwareView';
 import { useAuth } from '@/auth/authContext';
 import { IncidentCategory, Severity } from '@/types/database';
 
@@ -101,10 +102,12 @@ export default function ReportIncidentScreen() {
   )?.label;
 
   return (
+    <KeyboardAwareView>
     <View className="flex-1 bg-construction-light" style={{ paddingTop: insets.top }}>
       <ScrollView
         className="flex-1"
-        contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 100 }}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
       >
         {/* Category Selection */}
         <View className="mb-6">
@@ -243,9 +246,9 @@ export default function ReportIncidentScreen() {
         </View>
       </ScrollView>
 
-      {/* Submit Button */}
+      {/* Submit Button (in-flow footer so it rides above the keyboard) */}
       <View
-        className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-300 px-4 py-3"
+        className="bg-white border-t border-gray-300 px-4 py-3"
         style={{ paddingBottom: insets.bottom + 12 }}
       >
         <TouchableOpacity
@@ -303,5 +306,6 @@ export default function ReportIncidentScreen() {
         </View>
       </Modal>
     </View>
+    </KeyboardAwareView>
   );
 }

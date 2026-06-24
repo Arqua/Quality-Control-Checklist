@@ -13,6 +13,7 @@ import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as db from '@/database/db';
 import { useNotification } from '@/components/Notification';
+import { KeyboardAwareView } from '@/components/KeyboardAwareView';
 import { PunchItem } from '@/types/database';
 
 export default function PunchListScreen() {
@@ -155,7 +156,8 @@ export default function PunchListScreen() {
 
       {/* Add Item Modal */}
       <Modal visible={showNewItem} animationType="slide" transparent>
-        <View className="flex-1 bg-black/50 justify-end">
+        <KeyboardAwareView className="flex-1 bg-black/50 justify-end">
+        <View className="flex-1 justify-end">
           <View
             className="bg-white rounded-t-2xl p-6"
             style={{ paddingBottom: insets.bottom + 20 }}
@@ -185,6 +187,7 @@ export default function PunchListScreen() {
             </TouchableOpacity>
           </View>
         </View>
+        </KeyboardAwareView>
       </Modal>
     </View>
   );
