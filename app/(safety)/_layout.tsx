@@ -36,6 +36,18 @@ export default function SafetyLayout() {
           title: 'Incident Details',
         }}
       />
+      <Stack.Screen
+        name="hot-work-permit"
+        options={{
+          title: 'Hot Work Permit',
+        }}
+      />
+      <Stack.Screen
+        name="rigging-form"
+        options={{
+          title: 'Rigging Form',
+        }}
+      />
     </Stack>
   );
 }

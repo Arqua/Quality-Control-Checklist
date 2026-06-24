@@ -166,6 +166,50 @@ CREATE TABLE IF NOT EXISTS safety_tips (
   last_shown  TIMESTAMPTZ
 );
 
+-- Equipment permits: hot work permits ----------------------------------------
+CREATE TABLE IF NOT EXISTS hot_work_permits (
+  id                    UUID PRIMARY KEY,
+  project_id            UUID NOT NULL REFERENCES projects(id),
+  permit_number         TEXT NOT NULL,
+  work_location         TEXT NOT NULL,
+  work_description      TEXT NOT NULL,
+  start_date            TIMESTAMPTZ NOT NULL,
+  end_date              TIMESTAMPTZ NOT NULL,
+  authorized_by         TEXT NOT NULL,
+  precautions_taken     TEXT NOT NULL,
+  equipment_list        TEXT,
+  responsible_person    TEXT NOT NULL,
+  status                TEXT NOT NULL DEFAULT 'ACTIVE'
+                          CHECK (status IN ('ACTIVE', 'COMPLETED', 'CANCELLED')),
+  created_at            TIMESTAMPTZ NOT NULL,
+  updated_at            TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_hot_work_project ON hot_work_permits (project_id);
+CREATE INDEX IF NOT EXISTS idx_hot_work_status  ON hot_work_permits (status);
+
+-- Equipment permits: rigging forms ------------------------------------------
+CREATE TABLE IF NOT EXISTS rigging_forms (
+  id                    UUID PRIMARY KEY,
+  project_id            UUID NOT NULL REFERENCES projects(id),
+  rigging_number        TEXT NOT NULL,
+  load_description      TEXT NOT NULL,
+  load_weight           NUMERIC NOT NULL,
+  rigging_plan          TEXT NOT NULL,
+  inspected_by          TEXT NOT NULL,
+  certification_number  TEXT NOT NULL,
+  weather_conditions    TEXT,
+  area_secured          BOOLEAN NOT NULL DEFAULT FALSE,
+  personnel_briefed     BOOLEAN NOT NULL DEFAULT FALSE,
+  status                TEXT NOT NULL DEFAULT 'PENDING'
+                          CHECK (status IN ('PENDING', 'APPROVED', 'IN_USE', 'COMPLETED', 'REJECTED')),
+  created_at            TIMESTAMPTZ NOT NULL,
+  updated_at            TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_rigging_project ON rigging_forms (project_id);
+CREATE INDEX IF NOT EXISTS idx_rigging_status  ON rigging_forms (status);
+
 -- Sync audit log ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS sync_log (
   id               SERIAL PRIMARY KEY,

@@ -17,6 +17,8 @@ import {
   SafetyTip,
   IncidentCategory,
   IncidentReport,
+  HotWorkPermit,
+  RiggingForm,
 } from '../types/database';
 
 const DB_NAME = 'qc-checklist.db';
@@ -195,6 +197,48 @@ const initializeDatabase = async (database: SQLite.SQLiteDatabase) => {
         photo_sync_status TEXT DEFAULT 'PENDING',
         created_at TEXT NOT NULL,
         FOREIGN KEY (incident_id) REFERENCES incident_reports(id) ON DELETE CASCADE
+      );
+    `);
+
+    // Hot work permits
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS hot_work_permits (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        permit_number TEXT NOT NULL,
+        work_location TEXT NOT NULL,
+        work_description TEXT NOT NULL,
+        start_date TEXT NOT NULL,
+        end_date TEXT NOT NULL,
+        authorized_by TEXT NOT NULL,
+        precautions_taken TEXT NOT NULL,
+        equipment_list TEXT,
+        responsible_person TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'ACTIVE',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (project_id) REFERENCES projects(id)
+      );
+    `);
+
+    // Rigging forms
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS rigging_forms (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        rigging_number TEXT NOT NULL,
+        load_description TEXT NOT NULL,
+        load_weight REAL NOT NULL,
+        rigging_plan TEXT NOT NULL,
+        inspected_by TEXT NOT NULL,
+        certification_number TEXT NOT NULL,
+        weather_conditions TEXT,
+        area_secured INTEGER NOT NULL DEFAULT 0,
+        personnel_briefed INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'PENDING',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (project_id) REFERENCES projects(id)
       );
     `);
 
@@ -1142,4 +1186,168 @@ export const getHighSeverityIncidents = async (): Promise<IncidentReport[]> => {
      ORDER BY date_time DESC`
   );
   return rows || [];
+};
+
+// HOT WORK PERMITS — Fire-related work activity tracking
+export const createHotWorkPermit = async (params: {
+  projectId: string;
+  permitNumber: string;
+  workLocation: string;
+  workDescription: string;
+  startDate: string;
+  endDate: string;
+  authorizedBy: string;
+  precautionsTaken: string;
+  equipmentList?: string | null;
+  responsiblePerson: string;
+}): Promise<HotWorkPermit> => {
+  const database = await getDatabase();
+  const id = uuidv4();
+  const now = new Date().toISOString();
+
+  await database.runAsync(
+    `INSERT INTO hot_work_permits
+     (id, project_id, permit_number, work_location, work_description, start_date, end_date, authorized_by, precautions_taken, equipment_list, responsible_person, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      params.projectId,
+      params.permitNumber,
+      params.workLocation,
+      params.workDescription,
+      params.startDate,
+      params.endDate,
+      params.authorizedBy,
+      params.precautionsTaken,
+      params.equipmentList ?? null,
+      params.responsiblePerson,
+      'ACTIVE',
+      now,
+      now,
+    ]
+  );
+
+  return {
+    id,
+    project_id: params.projectId,
+    permit_number: params.permitNumber,
+    work_location: params.workLocation,
+    work_description: params.workDescription,
+    start_date: params.startDate,
+    end_date: params.endDate,
+    authorized_by: params.authorizedBy,
+    precautions_taken: params.precautionsTaken,
+    equipment_list: params.equipmentList ?? null,
+    responsible_person: params.responsiblePerson,
+    status: 'ACTIVE',
+    created_at: now,
+    updated_at: now,
+  };
+};
+
+export const getHotWorkPermitsByProject = async (
+  projectId: string
+): Promise<HotWorkPermit[]> => {
+  const database = await getDatabase();
+  const rows = await database.getAllAsync<HotWorkPermit>(
+    'SELECT * FROM hot_work_permits WHERE project_id = ? ORDER BY start_date DESC',
+    [projectId]
+  );
+  return rows || [];
+};
+
+export const updateHotWorkPermitStatus = async (
+  id: string,
+  status: HotWorkPermit['status']
+): Promise<void> => {
+  const database = await getDatabase();
+  const now = new Date().toISOString();
+  await database.runAsync(
+    'UPDATE hot_work_permits SET status = ?, updated_at = ? WHERE id = ?',
+    [status, now, id]
+  );
+};
+
+// RIGGING FORMS — Heavy lifting operation tracking
+export const createRiggingForm = async (params: {
+  projectId: string;
+  riggingNumber: string;
+  loadDescription: string;
+  loadWeight: number;
+  riggingPlan: string;
+  inspectedBy: string;
+  certificationNumber: string;
+  weatherConditions?: string | null;
+  areaSecured: boolean;
+  personnelBriefed: boolean;
+}): Promise<RiggingForm> => {
+  const database = await getDatabase();
+  const id = uuidv4();
+  const now = new Date().toISOString();
+
+  await database.runAsync(
+    `INSERT INTO rigging_forms
+     (id, project_id, rigging_number, load_description, load_weight, rigging_plan, inspected_by, certification_number, weather_conditions, area_secured, personnel_briefed, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      params.projectId,
+      params.riggingNumber,
+      params.loadDescription,
+      params.loadWeight,
+      params.riggingPlan,
+      params.inspectedBy,
+      params.certificationNumber,
+      params.weatherConditions ?? null,
+      params.areaSecured ? 1 : 0,
+      params.personnelBriefed ? 1 : 0,
+      'PENDING',
+      now,
+      now,
+    ]
+  );
+
+  return {
+    id,
+    project_id: params.projectId,
+    rigging_number: params.riggingNumber,
+    load_description: params.loadDescription,
+    load_weight: params.loadWeight,
+    rigging_plan: params.riggingPlan,
+    inspected_by: params.inspectedBy,
+    certification_number: params.certificationNumber,
+    weather_conditions: params.weatherConditions ?? null,
+    area_secured: params.areaSecured,
+    personnel_briefed: params.personnelBriefed,
+    status: 'PENDING',
+    created_at: now,
+    updated_at: now,
+  };
+};
+
+export const getRiggingFormsByProject = async (
+  projectId: string
+): Promise<RiggingForm[]> => {
+  const database = await getDatabase();
+  const rows = await database.getAllAsync<RiggingForm>(
+    'SELECT * FROM rigging_forms WHERE project_id = ? ORDER BY created_at DESC',
+    [projectId]
+  );
+  return rows?.map(row => ({
+    ...row,
+    area_secured: Boolean(row.area_secured),
+    personnel_briefed: Boolean(row.personnel_briefed),
+  })) || [];
+};
+
+export const updateRiggingFormStatus = async (
+  id: string,
+  status: RiggingForm['status']
+): Promise<void> => {
+  const database = await getDatabase();
+  const now = new Date().toISOString();
+  await database.runAsync(
+    'UPDATE rigging_forms SET status = ?, updated_at = ? WHERE id = ?',
+    [status, now, id]
+  );
 };

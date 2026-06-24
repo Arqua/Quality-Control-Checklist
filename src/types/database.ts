@@ -169,6 +169,46 @@ export interface IncidentAttachment {
   created_at: string;
 }
 
+/**
+ * Hot work permit for tracking fire-related work activities.
+ */
+export interface HotWorkPermit {
+  id: string;
+  project_id: string;
+  permit_number: string;
+  work_location: string;
+  work_description: string;
+  start_date: string;
+  end_date: string;
+  authorized_by: string;
+  precautions_taken: string;
+  equipment_list?: string | null;
+  responsible_person: string;
+  status: 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Rigging form for tracking heavy lifting operations.
+ */
+export interface RiggingForm {
+  id: string;
+  project_id: string;
+  rigging_number: string;
+  load_description: string;
+  load_weight: number;
+  rigging_plan: string;
+  inspected_by: string;
+  certification_number: string;
+  weather_conditions?: string | null;
+  area_secured: boolean;
+  personnel_briefed: boolean;
+  status: 'PENDING' | 'APPROVED' | 'IN_USE' | 'COMPLETED' | 'REJECTED';
+  created_at: string;
+  updated_at: string;
+}
+
 export interface SyncPayload {
   results: ChecklistResult[];
   punchItems: PunchItem[];

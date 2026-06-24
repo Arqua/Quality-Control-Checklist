@@ -271,7 +271,7 @@ export default function HomeScreen() {
         {/* Safety Features Section */}
         <View className="mb-4">
           <Text className="text-construction-dark font-bold text-lg mb-3">Safety</Text>
-          <View className="flex-row gap-3">
+          <View className="flex-row gap-3 mb-3">
             <TouchableOpacity
               onPress={() =>
                 router.push({
@@ -315,6 +315,42 @@ export default function HomeScreen() {
                 </Text>
               </TouchableOpacity>
             )}
+          </View>
+
+          {/* Equipment Permits Section */}
+          <Text className="text-construction-dark font-bold text-lg mb-3">Equipment Permits</Text>
+          <View className="flex-row gap-3">
+            <TouchableOpacity
+              onPress={() =>
+                router.push({
+                  pathname: '/(safety)/hot-work-permit',
+                  params: { projectId: selectedProject?.id || '' },
+                })
+              }
+              disabled={!selectedProject}
+              className="flex-1 bg-yellow-50 rounded-lg p-4 border border-yellow-200 items-center justify-center"
+            >
+              <MaterialIcons name="local-fire-department" size={28} color="#D97706" />
+              <Text className="text-yellow-700 font-bold text-xs mt-2 text-center">
+                Hot Work Permit
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() =>
+                router.push({
+                  pathname: '/(safety)/rigging-form',
+                  params: { projectId: selectedProject?.id || '' },
+                })
+              }
+              disabled={!selectedProject}
+              className="flex-1 bg-purple-50 rounded-lg p-4 border border-purple-200 items-center justify-center"
+            >
+              <MaterialIcons name="construction" size={28} color="#7C3AED" />
+              <Text className="text-purple-700 font-bold text-xs mt-2 text-center">
+                Rigging Form
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
 
