@@ -4,19 +4,26 @@
   },
   "build": {
     "production": {
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://barnard-checklist.onrender.com"
+      },
       "android": {
         "buildType": "apk"
       }
     },
     "preview": {
       "env": {
-        "EXPO_PUBLIC_SEED_DATA": "true"
+        "EXPO_PUBLIC_SEED_DATA": "true",
+        "EXPO_PUBLIC_API_URL": "https://barnard-checklist.onrender.com"
       },
       "android": {
         "buildType": "apk"
       }
     },
     "development": {
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://localhost:3000"
+      },
       "android": {
         "buildType": "apk",
         "distribution": "internal"
