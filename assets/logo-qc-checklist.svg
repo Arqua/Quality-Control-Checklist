@@ -1,0 +1,35 @@
+<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle -->
+  <circle cx="100" cy="100" r="95" fill="#004E89" opacity="0.1" stroke="#004E89" stroke-width="2"/>
+
+  <!-- Main circle -->
+  <circle cx="100" cy="100" r="85" fill="#004E89"/>
+
+  <!-- Clipboard/checklist base -->
+  <rect x="55" y="45" width="90" height="110" rx="5" fill="white" opacity="0.95"/>
+
+  <!-- Clipboard clip -->
+  <rect x="65" y="35" width="70" height="15" rx="3" fill="#004E89"/>
+
+  <!-- Checkmark lines (checklist items) -->
+  <!-- Item 1 -->
+  <line x1="70" y1="70" x2="85" y2="70" stroke="#004E89" stroke-width="3" stroke-linecap="round"/>
+  <path d="M 65 65 L 68 69 L 75 62" stroke="#059669" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Item 2 -->
+  <line x1="90" y1="90" x2="105" y2="90" stroke="#004E89" stroke-width="3" stroke-linecap="round"/>
+  <path d="M 65 85 L 68 89 L 75 82" stroke="#059669" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Item 3 -->
+  <line x1="90" y1="110" x2="105" y2="110" stroke="#004E89" stroke-width="3" stroke-linecap="round"/>
+  <path d="M 65 105 L 68 109 L 75 102" stroke="#059669" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Construction level indicator (right side) -->
+  <g transform="translate(130, 95)">
+    <rect x="-8" y="-15" width="16" height="30" rx="2" fill="none" stroke="#EA580C" stroke-width="2"/>
+    <circle cx="0" cy="5" r="3" fill="#EA580C"/>
+  </g>
+
+  <!-- Text: QC -->
+  <text x="100" y="160" font-size="24" font-weight="bold" text-anchor="middle" fill="#004E89" font-family="Arial, sans-serif">QC</text>
+</svg>
