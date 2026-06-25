@@ -107,6 +107,7 @@ export default function HomeScreen() {
       notify({ type: 'success', message: 'Project created' });
       await loadData();
     } catch (error) {
+      console.error('Project creation error:', error);
       notify({ type: 'error', message: 'Failed to create project' });
     }
   };
