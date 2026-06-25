@@ -14,7 +14,7 @@ import { useNotification } from '@/components/Notification';
 import { Card } from '@/components/ui';
 import { SafetyTip } from '@/types/database';
 
-const CATEGORY_ICONS: Record<string, string> = {
+const CATEGORY_ICONS: Record<string, keyof typeof MaterialIcons.glyphMap> = {
   PPE: 'health-and-safety',
   HAZARD_AWARENESS: 'warning',
   BEST_PRACTICES: 'lightbulb',

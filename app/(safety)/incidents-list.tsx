@@ -14,7 +14,10 @@ import * as db from '@/database/db';
 import { useNotification } from '@/components/Notification';
 import { IncidentReport } from '@/types/database';
 
-const CATEGORY_LABELS: Record<string, { label: string; icon: string }> = {
+const CATEGORY_LABELS: Record<
+  string,
+  { label: string; icon: keyof typeof MaterialIcons.glyphMap }
+> = {
   INJURY_ILLNESS: { label: 'Injury/Illness', icon: 'health-and-safety' },
   MOTOR_VEHICLE: { label: 'Motor Vehicle', icon: 'directions-car' },
   PROPERTY_DAMAGE: { label: 'Property Damage', icon: 'broken-image' },

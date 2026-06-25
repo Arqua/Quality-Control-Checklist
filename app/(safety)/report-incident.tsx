@@ -17,7 +17,11 @@ import { KeyboardAwareView } from '@/components/KeyboardAwareView';
 import { useAuth } from '@/auth/authContext';
 import { IncidentCategory, Severity } from '@/types/database';
 
-const INCIDENT_CATEGORIES: { value: IncidentCategory; label: string; icon: string }[] = [
+const INCIDENT_CATEGORIES: {
+  value: IncidentCategory;
+  label: string;
+  icon: keyof typeof MaterialIcons.glyphMap;
+}[] = [
   { value: 'INJURY_ILLNESS', label: 'Injury/Illness', icon: 'health-and-safety' },
   { value: 'MOTOR_VEHICLE', label: 'Motor Vehicle Accident', icon: 'directions-car' },
   { value: 'PROPERTY_DAMAGE', label: 'Property Damage', icon: 'broken-image' },

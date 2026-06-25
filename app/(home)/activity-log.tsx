@@ -39,7 +39,9 @@ export default function ActivityLogScreen() {
     }
   };
 
-  const getActivityIcon = (type: Activity['type']): string => {
+  const getActivityIcon = (
+    type: Activity['type']
+  ): keyof typeof MaterialIcons.glyphMap => {
     switch (type) {
       case 'CHECKLIST_COMPLETED':
         return 'task-alt';
