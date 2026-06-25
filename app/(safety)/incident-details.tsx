@@ -12,6 +12,7 @@ import { useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as db from '@/database/db';
 import { useNotification } from '@/components/Notification';
+import { Card } from '@/components/ui';
 import { IncidentReport } from '@/types/database';
 
 const CATEGORY_LABELS: Record<string, { label: string; icon: string }> = {
@@ -113,122 +114,136 @@ export default function IncidentDetailsScreen() {
         contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 100 }}
       >
         {/* Header Card */}
-        <View className="bg-white rounded-lg p-4 mb-4 border border-gray-200">
-          <View className="flex-row items-start justify-between mb-3">
-            <View className="flex-1">
-              <Text className="text-construction-dark font-bold text-lg">
-                {CATEGORY_LABELS[incident.category]?.label}
-              </Text>
-              <Text className="text-gray-500 text-sm mt-1">
-                Reported {new Date(incident.created_at).toLocaleDateString()}
-              </Text>
-            </View>
-            <View
-              className="rounded-lg px-3 py-1.5"
-              style={{ backgroundColor: `${getSeverityColor(incident.severity)}20` }}
-            >
-              <Text
-                className="text-xs font-bold"
-                style={{ color: getSeverityColor(incident.severity) }}
+        <Card elevated className="mb-4">
+          <View className="p-4">
+            <View className="flex-row items-start justify-between mb-3">
+              <View className="flex-1">
+                <Text className="text-construction-dark font-bold text-lg">
+                  {CATEGORY_LABELS[incident.category]?.label}
+                </Text>
+                <Text className="text-gray-500 text-sm mt-1">
+                  Reported {new Date(incident.created_at).toLocaleDateString()}
+                </Text>
+              </View>
+              <View
+                className="rounded-lg px-3 py-1.5"
+                style={{ backgroundColor: `${getSeverityColor(incident.severity)}20` }}
               >
-                {incident.severity} SEVERITY
-              </Text>
+                <Text
+                  className="text-xs font-bold"
+                  style={{ color: getSeverityColor(incident.severity) }}
+                >
+                  {incident.severity} SEVERITY
+                </Text>
+              </View>
             </View>
-          </View>
 
-          {/* Alert Badge for HIGH severity */}
-          {incident.severity === 'HIGH' && (
-            <View className="bg-red-50 border border-red-200 rounded-lg p-3 flex-row items-center">
-              <MaterialIcons name="warning" size={18} color="#DC2626" />
-              <Text className="text-red-700 text-xs ml-2 flex-1">
-                Management has been notified of this high-severity incident.
-              </Text>
-            </View>
-          )}
-        </View>
+            {/* Alert Badge for HIGH severity */}
+            {incident.severity === 'HIGH' && (
+              <View className="bg-red-50 border border-red-200 rounded-lg p-3 flex-row items-center">
+                <MaterialIcons name="warning" size={18} color="#DC2626" />
+                <Text className="text-red-700 text-xs ml-2 flex-1">
+                  Management has been notified of this high-severity incident.
+                </Text>
+              </View>
+            )}
+          </View>
+        </Card>
 
         {/* Status Card */}
-        <View className="bg-white rounded-lg p-4 mb-4 border border-gray-200">
-          <Text className="text-construction-dark font-bold text-sm mb-3">Current Status</Text>
-          <TouchableOpacity
-            onPress={() => setShowStatusPicker(true)}
-            disabled={updating}
-            className="border-2 border-gray-300 rounded-lg p-3 flex-row items-center justify-between"
-            style={{
-              borderColor: STATUS_COLORS[incident.status],
-            }}
-          >
-            <View className="flex-row items-center flex-1">
-              <View
-                className="w-3 h-3 rounded-full mr-3"
-                style={{ backgroundColor: STATUS_COLORS[incident.status] }}
-              />
-              <Text
-                className="text-base font-semibold"
-                style={{ color: STATUS_COLORS[incident.status] }}
-              >
-                {incident.status.replace(/_/g, ' ')}
-              </Text>
-            </View>
-            <MaterialIcons name="expand-more" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
-        </View>
+        <Card elevated className="mb-4">
+          <View className="p-4">
+            <Text className="text-construction-dark font-bold text-sm mb-3">Current Status</Text>
+            <TouchableOpacity
+              onPress={() => setShowStatusPicker(true)}
+              disabled={updating}
+              className="border-2 border-gray-300 rounded-xl p-3 flex-row items-center justify-between"
+              style={{
+                borderColor: STATUS_COLORS[incident.status],
+              }}
+            >
+              <View className="flex-row items-center flex-1">
+                <View
+                  className="w-3 h-3 rounded-full mr-3"
+                  style={{ backgroundColor: STATUS_COLORS[incident.status] }}
+                />
+                <Text
+                  className="text-base font-semibold"
+                  style={{ color: STATUS_COLORS[incident.status] }}
+                >
+                  {incident.status.replace(/_/g, ' ')}
+                </Text>
+              </View>
+              <MaterialIcons name="expand-more" size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+          </View>
+        </Card>
 
         {/* Description */}
-        <View className="bg-white rounded-lg p-4 mb-4 border border-gray-200">
-          <Text className="text-construction-dark font-bold text-sm mb-2">Description</Text>
-          <Text className="text-gray-700 text-base leading-6">
-            {incident.description}
-          </Text>
-        </View>
+        <Card elevated className="mb-4">
+          <View className="p-4">
+            <Text className="text-construction-dark font-bold text-sm mb-2">Description</Text>
+            <Text className="text-gray-700 text-base leading-6">
+              {incident.description}
+            </Text>
+          </View>
+        </Card>
 
         {/* Location */}
         {incident.location && (
-          <View className="bg-white rounded-lg p-4 mb-4 border border-gray-200">
-            <View className="flex-row items-center mb-2">
-              <MaterialIcons name="location-on" size={20} color="#004E89" />
-              <Text className="text-construction-dark font-bold text-sm ml-2">Location</Text>
+          <Card elevated className="mb-4">
+            <View className="p-4">
+              <View className="flex-row items-center mb-2">
+                <MaterialIcons name="location-on" size={20} color="#004E89" />
+                <Text className="text-construction-dark font-bold text-sm ml-2">Location</Text>
+              </View>
+              <Text className="text-gray-700 text-base">
+                {incident.location}
+              </Text>
             </View>
-            <Text className="text-gray-700 text-base">
-              {incident.location}
-            </Text>
-          </View>
+          </Card>
         )}
 
         {/* Involved Parties */}
         {incident.involved_parties && (
-          <View className="bg-white rounded-lg p-4 mb-4 border border-gray-200">
-            <View className="flex-row items-center mb-2">
-              <MaterialIcons name="people" size={20} color="#004E89" />
-              <Text className="text-construction-dark font-bold text-sm ml-2">Involved Parties</Text>
+          <Card elevated className="mb-4">
+            <View className="p-4">
+              <View className="flex-row items-center mb-2">
+                <MaterialIcons name="people" size={20} color="#004E89" />
+                <Text className="text-construction-dark font-bold text-sm ml-2">Involved Parties</Text>
+              </View>
+              <Text className="text-gray-700 text-base">
+                {incident.involved_parties}
+              </Text>
             </View>
-            <Text className="text-gray-700 text-base">
-              {incident.involved_parties}
-            </Text>
-          </View>
+          </Card>
         )}
 
         {/* Corrective Actions */}
         {incident.corrective_actions && (
-          <View className="bg-white rounded-lg p-4 mb-4 border border-gray-200">
-            <View className="flex-row items-center mb-2">
-              <MaterialIcons name="assignment" size={20} color="#004E89" />
-              <Text className="text-construction-dark font-bold text-sm ml-2">Corrective Actions</Text>
+          <Card elevated className="mb-4">
+            <View className="p-4">
+              <View className="flex-row items-center mb-2">
+                <MaterialIcons name="assignment" size={20} color="#004E89" />
+                <Text className="text-construction-dark font-bold text-sm ml-2">Corrective Actions</Text>
+              </View>
+              <Text className="text-gray-700 text-base">
+                {incident.corrective_actions}
+              </Text>
             </View>
-            <Text className="text-gray-700 text-base">
-              {incident.corrective_actions}
-            </Text>
-          </View>
+          </Card>
         )}
 
         {/* Reporter Info */}
-        <View className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-          <Text className="text-gray-600 text-xs mb-1">Reported by</Text>
-          <Text className="text-construction-dark font-semibold">{incident.reporter_name}</Text>
-          <Text className="text-gray-500 text-xs mt-2">
-            {new Date(incident.created_at).toLocaleString()}
-          </Text>
-        </View>
+        <Card elevated className="bg-brand-50">
+          <View className="p-4">
+            <Text className="text-gray-600 text-xs mb-1">Reported by</Text>
+            <Text className="text-construction-dark font-semibold">{incident.reporter_name}</Text>
+            <Text className="text-gray-500 text-xs mt-2">
+              {new Date(incident.created_at).toLocaleString()}
+            </Text>
+          </View>
+        </Card>
       </ScrollView>
 
       {/* Status Picker Modal */}

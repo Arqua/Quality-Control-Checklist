@@ -6,11 +6,13 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as db from '@/database/db';
 import { useAuth } from '@/auth/authContext';
 import { useNotification } from '@/components/Notification';
+import { Card } from '@/components/ui';
 import { Alert, Severity } from '@/types/database';
 
 const SEVERITY_STYLE: Record<Severity, { bg: string; label: string }> = {
@@ -20,6 +22,7 @@ const SEVERITY_STYLE: Record<Severity, { bg: string; label: string }> = {
 };
 
 export default function AlertsScreen() {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { isManager } = useAuth();
   const { notify } = useNotification();
@@ -56,7 +59,7 @@ export default function AlertsScreen() {
   // Management-only screen.
   if (!isManager) {
     return (
-      <View className="flex-1 bg-construction-light items-center justify-center p-6">
+      <View className="flex-1 bg-construction-light items-center justify-center p-6" style={{ paddingTop: insets.top }}>
         <MaterialIcons name="lock" size={48} color="#ccc" />
         <Text className="text-construction-dark text-center mt-3">
           Management access required to view alerts.
@@ -67,14 +70,14 @@ export default function AlertsScreen() {
 
   if (loading) {
     return (
-      <View className="flex-1 bg-construction-light items-center justify-center">
+      <View className="flex-1 bg-construction-light items-center justify-center" style={{ paddingTop: insets.top }}>
         <ActivityIndicator size="large" color="#004E89" />
       </View>
     );
   }
 
   return (
-    <View className="flex-1 bg-construction-light">
+    <View className="flex-1 bg-construction-light" style={{ paddingTop: insets.top }}>
       {alerts.length === 0 ? (
         <View className="flex-1 items-center justify-center p-6">
           <MaterialIcons name="notifications-none" size={48} color="#ccc" />
@@ -86,44 +89,47 @@ export default function AlertsScreen() {
         <FlatList
           data={alerts}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ padding: 16 }}
+          contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24 }}
           renderItem={({ item }) => {
             const sev = SEVERITY_STYLE[item.severity];
             return (
-              <View
-                className={`mb-3 bg-white rounded-lg p-4 border-l-4 ${
+              <Card
+                elevated
+                className={`mb-3 border-l-4 ${
                   item.acknowledged ? 'border-gray-300' : 'border-red-600'
                 }`}
               >
-                <View className="flex-row justify-between items-center mb-2">
-                  <View className={`${sev.bg} rounded px-2 py-1`}>
-                    <Text className="text-white text-xs font-bold">
-                      {sev.label}
+                <View className="p-4">
+                  <View className="flex-row justify-between items-center mb-2">
+                    <View className={`${sev.bg} rounded px-2 py-1`}>
+                      <Text className="text-white text-xs font-bold">
+                        {sev.label}
+                      </Text>
+                    </View>
+                    <Text className="text-construction-dark text-xs opacity-60">
+                      {new Date(item.created_at).toLocaleString()}
                     </Text>
                   </View>
-                  <Text className="text-construction-dark text-xs opacity-60">
-                    {new Date(item.created_at).toLocaleString()}
+
+                  <Text className="text-construction-dark font-bold text-base">
+                    {item.title}
                   </Text>
+                  <Text className="text-construction-dark text-sm opacity-80 mt-1">
+                    {item.body}
+                  </Text>
+
+                  {!item.acknowledged && (
+                    <TouchableOpacity
+                      onPress={() => handleAcknowledge(item.id)}
+                      className="bg-brand-500 rounded-xl py-2.5 mt-3"
+                    >
+                      <Text className="text-white text-center font-bold text-sm">
+                        Acknowledge
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
-
-                <Text className="text-construction-dark font-bold text-base">
-                  {item.title}
-                </Text>
-                <Text className="text-construction-dark text-sm opacity-80 mt-1">
-                  {item.body}
-                </Text>
-
-                {!item.acknowledged && (
-                  <TouchableOpacity
-                    onPress={() => handleAcknowledge(item.id)}
-                    className="bg-construction-dark rounded py-2 mt-3"
-                  >
-                    <Text className="text-white text-center font-bold text-sm">
-                      Acknowledge
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+              </Card>
             );
           }}
         />

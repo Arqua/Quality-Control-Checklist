@@ -11,6 +11,7 @@ import { useFocusEffect } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as db from '@/database/db';
 import { useNotification } from '@/components/Notification';
+import { Card } from '@/components/ui';
 import { Activity } from '@/types/database';
 
 export default function ActivityLogScreen() {
@@ -107,8 +108,8 @@ export default function ActivityLogScreen() {
           </View>
         }
         renderItem={({ item }) => (
-          <View className="bg-white rounded-lg p-4 mb-3 border border-gray-200">
-            <View className="flex-row items-start">
+          <Card elevated className="mb-3">
+            <View className="p-4 flex-row items-start">
               <View
                 className="rounded-full p-2 mr-3"
                 style={{
@@ -147,7 +148,7 @@ export default function ActivityLogScreen() {
                 </View>
               </View>
             </View>
-          </View>
+          </Card>
         )}
       />
     </View>
