@@ -20,6 +20,7 @@ import {
   HotWorkPermit,
   RiggingForm,
   EquipmentInspection,
+  PreJobBriefing,
 } from '../types/database';
 
 const DB_NAME = 'qc-checklist.db';
@@ -237,6 +238,26 @@ const initializeDatabase = async (database: SQLite.SQLiteDatabase) => {
         area_secured INTEGER NOT NULL DEFAULT 0,
         personnel_briefed INTEGER NOT NULL DEFAULT 0,
         status TEXT NOT NULL DEFAULT 'PENDING',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (project_id) REFERENCES projects(id)
+      );
+    `);
+
+    // Pre-job safety briefings
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS prejob_briefings (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        job_description TEXT NOT NULL,
+        work_location TEXT NOT NULL,
+        supervisor TEXT NOT NULL,
+        crew_members TEXT NOT NULL,
+        identified_hazards TEXT NOT NULL,
+        control_measures TEXT NOT NULL,
+        ppe_required TEXT NOT NULL,
+        emergency_procedures TEXT,
+        status TEXT NOT NULL DEFAULT 'OPEN',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         FOREIGN KEY (project_id) REFERENCES projects(id)
@@ -1374,6 +1395,83 @@ export const updateRiggingFormStatus = async (
   const now = new Date().toISOString();
   await database.runAsync(
     'UPDATE rigging_forms SET status = ?, updated_at = ? WHERE id = ?',
+    [status, now, id]
+  );
+};
+
+// PRE-JOB BRIEFINGS — Safety briefing completed before work begins
+export const createPreJobBriefing = async (params: {
+  projectId: string;
+  jobDescription: string;
+  workLocation: string;
+  supervisor: string;
+  crewMembers: string;
+  identifiedHazards: string;
+  controlMeasures: string;
+  ppeRequired: string;
+  emergencyProcedures?: string | null;
+}): Promise<PreJobBriefing> => {
+  const database = await getDatabase();
+  const id = uuidv4();
+  const now = new Date().toISOString();
+
+  await database.runAsync(
+    `INSERT INTO prejob_briefings
+     (id, project_id, job_description, work_location, supervisor, crew_members, identified_hazards, control_measures, ppe_required, emergency_procedures, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      params.projectId,
+      params.jobDescription,
+      params.workLocation,
+      params.supervisor,
+      params.crewMembers,
+      params.identifiedHazards,
+      params.controlMeasures,
+      params.ppeRequired,
+      params.emergencyProcedures ?? null,
+      'OPEN',
+      now,
+      now,
+    ]
+  );
+
+  return {
+    id,
+    project_id: params.projectId,
+    job_description: params.jobDescription,
+    work_location: params.workLocation,
+    supervisor: params.supervisor,
+    crew_members: params.crewMembers,
+    identified_hazards: params.identifiedHazards,
+    control_measures: params.controlMeasures,
+    ppe_required: params.ppeRequired,
+    emergency_procedures: params.emergencyProcedures ?? null,
+    status: 'OPEN',
+    created_at: now,
+    updated_at: now,
+  };
+};
+
+export const getPreJobBriefingsByProject = async (
+  projectId: string
+): Promise<PreJobBriefing[]> => {
+  const database = await getDatabase();
+  const rows = await database.getAllAsync<PreJobBriefing>(
+    'SELECT * FROM prejob_briefings WHERE project_id = ? ORDER BY created_at DESC',
+    [projectId]
+  );
+  return rows || [];
+};
+
+export const updatePreJobBriefingStatus = async (
+  id: string,
+  status: PreJobBriefing['status']
+): Promise<void> => {
+  const database = await getDatabase();
+  const now = new Date().toISOString();
+  await database.runAsync(
+    'UPDATE prejob_briefings SET status = ?, updated_at = ? WHERE id = ?',
     [status, now, id]
   );
 };

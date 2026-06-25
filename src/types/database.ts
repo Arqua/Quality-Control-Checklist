@@ -233,6 +233,25 @@ export interface EquipmentInspection {
   updated_at: string;
 }
 
+/**
+ * Pre-job safety briefing completed before work begins.
+ */
+export interface PreJobBriefing {
+  id: string;
+  project_id: string;
+  job_description: string;
+  work_location: string;
+  supervisor: string;
+  crew_members: string;
+  identified_hazards: string;
+  control_measures: string;
+  ppe_required: string;
+  emergency_procedures?: string | null;
+  status: 'OPEN' | 'COMPLETED';
+  created_at: string;
+  updated_at: string;
+}
+
 export interface SyncPayload {
   results: ChecklistResult[];
   punchItems: PunchItem[];

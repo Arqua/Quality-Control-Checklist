@@ -40,6 +40,7 @@ export default function HomeScreen() {
 
   // Modal state
   const [showProjectModal, setShowProjectModal] = useState(false);
+  const [showProjectPicker, setShowProjectPicker] = useState(false);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [projectName, setProjectName] = useState('');
   const [projectLocation, setProjectLocation] = useState('');
@@ -290,6 +291,45 @@ export default function HomeScreen() {
         className="flex-1"
         contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24 }}
       >
+        {/* Active project selector */}
+        <View className="mb-5">
+          <Text className="text-muted font-semibold text-xs uppercase tracking-wider mb-2">
+            Working On
+          </Text>
+          <TouchableOpacity
+            onPress={() => setShowProjectPicker(true)}
+            activeOpacity={0.85}
+            disabled={projects.length === 0}
+            className="bg-surface rounded-2xl p-4 flex-row items-center"
+            style={shadowCard}
+          >
+            <View className="w-10 h-10 rounded-xl bg-brand-50 items-center justify-center mr-3">
+              <MaterialIcons name="business" size={20} color="#004E89" />
+            </View>
+            <View className="flex-1">
+              {selectedProject ? (
+                <>
+                  <Text className="text-ink font-bold text-base">
+                    {selectedProject.name}
+                  </Text>
+                  <Text className="text-muted text-sm">
+                    {selectedProject.location}
+                  </Text>
+                </>
+              ) : (
+                <Text className="text-muted text-base">
+                  {projects.length === 0
+                    ? 'No projects yet'
+                    : 'Select a project'}
+                </Text>
+              )}
+            </View>
+            {projects.length > 0 && (
+              <MaterialIcons name="unfold-more" size={22} color="#9AA7B8" />
+            )}
+          </TouchableOpacity>
+        </View>
+
         {/* Management banner */}
         {isManager && unreadAlerts > 0 && (
           <TouchableOpacity
@@ -347,9 +387,9 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Equipment Permits Section */}
+        {/* Safety Forms Section */}
         <View className="mb-5">
-          <Text className="text-ink font-bold text-lg mb-3 tracking-tight">Equipment Permits</Text>
+          <Text className="text-ink font-bold text-lg mb-3 tracking-tight">Safety Forms</Text>
           <View className="flex-row gap-3">
             <ActionTile
               icon="local-fire-department"
@@ -371,6 +411,18 @@ export default function HomeScreen() {
               onPress={() =>
                 router.push({
                   pathname: '/(safety)/rigging-form',
+                  params: { projectId: selectedProject?.id || '' },
+                })
+              }
+            />
+            <ActionTile
+              icon="assignment-turned-in"
+              label="Prejob"
+              color="#0D9488"
+              disabled={!selectedProject}
+              onPress={() =>
+                router.push({
+                  pathname: '/(safety)/prejob-briefing',
                   params: { projectId: selectedProject?.id || '' },
                 })
               }
@@ -623,6 +675,80 @@ export default function HomeScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Project Picker Modal */}
+      <Modal
+        visible={showProjectPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowProjectPicker(false)}
+      >
+        <View className="flex-1 bg-black/50 justify-end">
+          <View className="bg-surface rounded-t-3xl p-6" style={{ maxHeight: '70%' }}>
+            <View className="items-center mb-3">
+              <View className="w-10 h-1 rounded-full bg-line" />
+            </View>
+            <View className="flex-row justify-between items-center mb-5">
+              <Text className="text-ink text-xl font-bold tracking-tight">
+                Select Project
+              </Text>
+              <TouchableOpacity
+                onPress={() => setShowProjectPicker(false)}
+                className="w-8 h-8 rounded-full bg-canvas items-center justify-center"
+              >
+                <MaterialIcons name="close" size={20} color="#6B7A90" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView>
+              {projects.map((project) => {
+                const active = selectedProject?.id === project.id;
+                return (
+                  <TouchableOpacity
+                    key={project.id}
+                    onPress={() => {
+                      selectProject(project);
+                      setShowProjectPicker(false);
+                    }}
+                    activeOpacity={0.85}
+                    className={`mb-2.5 p-4 rounded-2xl flex-row items-center ${
+                      active ? 'bg-brand-700' : 'bg-canvas'
+                    }`}
+                  >
+                    <View
+                      className={`w-10 h-10 rounded-xl items-center justify-center mr-3 ${
+                        active ? 'bg-white/15' : 'bg-brand-50'
+                      }`}
+                    >
+                      <MaterialIcons
+                        name="business"
+                        size={20}
+                        color={active ? '#FFFFFF' : '#004E89'}
+                      />
+                    </View>
+                    <View className="flex-1">
+                      <Text
+                        className={`font-bold text-base ${
+                          active ? 'text-white' : 'text-ink'
+                        }`}
+                      >
+                        {project.name}
+                      </Text>
+                      <Text
+                        className={`text-sm ${active ? 'text-white/75' : 'text-muted'}`}
+                      >
+                        {project.location}
+                      </Text>
+                    </View>
+                    {active && (
+                      <MaterialIcons name="check-circle" size={22} color="#FF8A5C" />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* New Project Modal */}
       <Modal

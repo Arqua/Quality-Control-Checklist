@@ -48,6 +48,12 @@ export default function SafetyLayout() {
           title: 'Rigging Form',
         }}
       />
+      <Stack.Screen
+        name="prejob-briefing"
+        options={{
+          title: 'Pre-Job Briefing',
+        }}
+      />
     </Stack>
   );
 }
