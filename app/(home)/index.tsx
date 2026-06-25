@@ -7,6 +7,8 @@ import {
   ActivityIndicator,
   Modal,
   TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -200,7 +202,7 @@ export default function HomeScreen() {
               </View>
               <View className="flex-1">
                 <Text className="text-white text-xl font-bold tracking-tight">
-                  QC Checklist
+                  Barnard
                 </Text>
                 <View className="flex-row items-center mt-0.5">
                   <View className="bg-white/15 rounded-full px-2 py-0.5">
@@ -254,17 +256,19 @@ export default function HomeScreen() {
           </View>
 
           <View className="flex-row gap-2.5">
-            <TouchableOpacity
-              onPress={() => setShowProjectModal(true)}
-              activeOpacity={0.85}
-              className="flex-1 bg-white rounded-xl py-3"
-              style={shadowCard}
-            >
-              <View className="flex-row items-center justify-center">
-                <MaterialIcons name="add" size={20} color="#F2530F" />
-                <Text className="text-brand-700 font-bold ml-1">New Project</Text>
-              </View>
-            </TouchableOpacity>
+            {isManager && (
+              <TouchableOpacity
+                onPress={() => setShowProjectModal(true)}
+                activeOpacity={0.85}
+                className="flex-1 bg-white rounded-xl py-3"
+                style={shadowCard}
+              >
+                <View className="flex-row items-center justify-center">
+                  <MaterialIcons name="add" size={20} color="#F2530F" />
+                  <Text className="text-brand-700 font-bold ml-1">New Project</Text>
+                </View>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               onPress={handleManualSync}
               disabled={syncing}
@@ -626,8 +630,12 @@ export default function HomeScreen() {
         animationType="slide"
         onRequestClose={() => setShowProjectModal(false)}
       >
-        <View className="flex-1 bg-black/50 justify-end">
-          <View className="bg-surface rounded-t-3xl p-6">
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+        >
+          <View className="flex-1 bg-black/50 justify-end">
+            <View className="bg-surface rounded-t-3xl p-6">
             <View className="items-center mb-3">
               <View className="w-10 h-1 rounded-full bg-line" />
             </View>
@@ -665,8 +673,9 @@ export default function HomeScreen() {
               icon="add"
               onPress={handleCreateProject}
             />
+            </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* New Template Modal */}
@@ -676,8 +685,12 @@ export default function HomeScreen() {
         animationType="slide"
         onRequestClose={() => setShowTemplateModal(false)}
       >
-        <View className="flex-1 bg-black/50 justify-end">
-          <ScrollView className="bg-surface rounded-t-3xl p-6" style={{ maxHeight: '85%' }}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+        >
+          <View className="flex-1 bg-black/50 justify-end">
+            <ScrollView className="bg-surface rounded-t-3xl p-6" style={{ maxHeight: '85%' }}>
             <View className="items-center mb-3">
               <View className="w-10 h-1 rounded-full bg-line" />
             </View>
@@ -744,7 +757,8 @@ export default function HomeScreen() {
               />
             </View>
           </ScrollView>
-        </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
