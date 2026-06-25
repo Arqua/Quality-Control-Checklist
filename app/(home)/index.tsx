@@ -101,6 +101,7 @@ export default function HomeScreen() {
       return;
     }
     try {
+      console.log('Creating project:', { projectName, projectLocation });
       await db.createProject(projectName.trim(), projectLocation.trim());
       setProjectName('');
       setProjectLocation('');
@@ -108,8 +109,9 @@ export default function HomeScreen() {
       notify({ type: 'success', message: 'Project created' });
       await loadData();
     } catch (error) {
-      console.error('Project creation error:', error);
-      notify({ type: 'error', message: 'Failed to create project' });
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('Project creation error:', errorMessage, error);
+      notify({ type: 'error', message: `Failed to create project: ${errorMessage}` });
     }
   };
 
